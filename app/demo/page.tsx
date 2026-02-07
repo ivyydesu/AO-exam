@@ -3,18 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-// 型定義
-type RequestData = {
-  id: string;
-  title: string;
-  description: string;
-  budget: number;
-  tutorId: string;
-  status: string;
-  paymentIntentId: string;
-  chatId: string;
-};
-
 // デモデータ
 const demoTutors = [
   {
@@ -85,10 +73,9 @@ const emptyRequest: RequestState = {
 
 export default function DemoPage() {
   const [activeRole, setActiveRole] = useState<"student" | "tutor" | "admin">("student");
-  
-  // 【修正】ここで <RequestData> を指定することで、idに文字列が入ってもエラーになりません
-  const [request, setRequest] = useState<RequestData>(emptyRequest);
-  
+
+  const [request, setRequest] = useState<RequestState>(emptyRequest);
+
   const [hydrated, setHydrated] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -151,8 +138,8 @@ export default function DemoPage() {
     [request.tutorId]
   );
 
-  const updateField = (key: keyof typeof emptyRequest, value: string | number) => {
-    setRequest((prev) => ({ ...prev, [key]: value }));
+  const updateField = (key: keyof RequestState, value: string | number) => {
+    setRequest((prev) => ({ ...prev, [key]: value as RequestState[keyof RequestState] }));
   };
 
   const createRequest = () => {
