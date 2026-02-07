@@ -61,7 +61,18 @@ const demoReviews = {
   ]
 } as const;
 
-const emptyRequest = {
+type RequestState = {
+  id: string;
+  title: string;
+  description: string;
+  budget: number;
+  tutorId: string;
+  status: "draft" | "accepted" | "escrow_pending" | "escrowed" | "completed";
+  paymentIntentId: string;
+  chatId: string;
+};
+
+const emptyRequest: RequestState = {
   id: "",
   title: "",
   description: "",
@@ -70,7 +81,7 @@ const emptyRequest = {
   status: "draft",
   paymentIntentId: "",
   chatId: ""
-} as const;
+};
 
 export default function DemoPage() {
   const [activeRole, setActiveRole] = useState<"student" | "tutor" | "admin">("student");
