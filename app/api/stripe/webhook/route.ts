@@ -2,7 +2,7 @@ import Stripe from "stripe";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
-import { supabaseAdmin } from "../../../../lib/supabase/server";
+import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 
 export async function POST(req: Request) {
   const body = await req.text();
@@ -29,6 +29,7 @@ export async function POST(req: Request) {
     const paymentIntentId = session.payment_intent as string | null;
 
     if (requestId && paymentIntentId) {
+      const supabaseAdmin = getSupabaseAdmin();
       await supabaseAdmin
         .from("requests")
         .update({ status: "escrowed", stripe_payment_intent_id: paymentIntentId })

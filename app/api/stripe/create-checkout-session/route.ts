@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
-import { supabaseAdmin } from "../../../../lib/supabase/server";
+import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 
 export async function POST(req: NextRequest) {
   const { requestId } = await req.json();
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { data: request, error } = await supabaseAdmin
     .from("requests")
     .select("id, title, budget, requester_id, status, tutor_id")
