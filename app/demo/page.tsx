@@ -3,6 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
+// 型定義
+type RequestData = {
+  id: string;
+  title: string;
+  description: string;
+  budget: number;
+  tutorId: string;
+  status: string;
+  paymentIntentId: string;
+  chatId: string;
+};
+
+// デモデータ
 const demoTutors = [
   {
     id: "tutor-1",
@@ -59,11 +72,12 @@ const emptyRequest = {
   chatId: ""
 } as const;
 
-type Status = "draft" | "accepted" | "escrow_pending" | "escrowed" | "completed";
-
 export default function DemoPage() {
   const [activeRole, setActiveRole] = useState<"student" | "tutor" | "admin">("student");
-  const [request, setRequest] = useState<typeof emptyRequest>(emptyRequest);
+  
+  // 【修正】ここで <RequestData> を指定することで、idに文字列が入ってもエラーになりません
+  const [request, setRequest] = useState<RequestData>(emptyRequest);
+  
   const [hydrated, setHydrated] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -73,23 +87,34 @@ export default function DemoPage() {
     demoReviews as unknown as Record<string, { id: string; name: string; rating: number; text: string }[]>
   );
 
+  // ローカルストレージからの読み込み
   useEffect(() => {
     const saved = window.localStorage.getItem("demo-request");
     if (saved) {
-      setRequest(JSON.parse(saved));
+      try {
+        setRequest(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse demo-request", e);
+      }
     }
     const storedReviews = window.localStorage.getItem("demo-reviews");
     if (storedReviews) {
-      setReviews(JSON.parse(storedReviews));
+      try {
+        setReviews(JSON.parse(storedReviews));
+      } catch (e) {
+        console.error("Failed to parse demo-reviews", e);
+      }
     }
     setHydrated(true);
   }, []);
 
+  // requestが更新されたらローカルストレージに保存
   useEffect(() => {
     if (!hydrated) return;
     window.localStorage.setItem("demo-request", JSON.stringify(request));
   }, [request, hydrated]);
 
+  // 他のタブとの同期など
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key === "demo-request" && event.newValue) {
@@ -128,48 +153,50 @@ export default function DemoPage() {
     }));
   };
 
-  const acceptRequest = () => {
-    setRequest((prev) => ({ ...prev, status: "accepted" }));
-  };
-
   const startCheckout = async () => {
-    const response = await fetch("/api/stripe/demo-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: request.title || "AO対策サポート",
-        amount: request.budget,
-        requestId: request.id
-      })
-    });
-    if (!response.ok) {
-      alert("決済セッション作成に失敗しました");
-      return;
+    try {
+      const response = await fetch("/api/stripe/demo-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: request.title || "AO対策サポート",
+          amount: request.budget,
+          requestId: request.id
+        })
+      });
+      if (!response.ok) {
+        alert("決済セッション作成に失敗しました");
+        return;
+      }
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert("決済URLの取得に失敗しました");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("エラーが発生しました");
     }
-    const data = await response.json();
-    window.location.href = data.url;
-  };
-
-  const markEscrowed = (paymentIntentId: string) => {
-    setRequest((prev) => ({
-      ...prev,
-      status: "escrowed",
-      paymentIntentId
-    }));
   };
 
   const capturePayment = async () => {
     if (!request.paymentIntentId) return;
-    const response = await fetch("/api/stripe/demo-capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentIntentId: request.paymentIntentId })
-    });
-    if (!response.ok) {
-      alert("決済確定に失敗しました");
-      return;
+    try {
+      const response = await fetch("/api/stripe/demo-capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentIntentId: request.paymentIntentId })
+      });
+      if (!response.ok) {
+        alert("決済確定に失敗しました");
+        return;
+      }
+      setRequest((prev) => ({ ...prev, status: "completed" }));
+    } catch (e) {
+      console.error(e);
+      alert("エラーが発生しました");
     }
-    setRequest((prev) => ({ ...prev, status: "completed" }));
   };
 
   const resetDemo = () => {
@@ -184,17 +211,19 @@ export default function DemoPage() {
 
   const submitReview = () => {
     const stored = window.localStorage.getItem("demo-reviews");
-    const reviews = stored ? JSON.parse(stored) : {};
-    const tutorReviews = reviews[request.tutorId] ?? [];
+    const currentReviews = stored ? JSON.parse(stored) : {};
+    const tutorReviews = currentReviews[request.tutorId] ?? [];
+    
     tutorReviews.unshift({
       id: crypto.randomUUID(),
       name: "高校生",
       rating: reviewRating,
       text: reviewText
     });
-    reviews[request.tutorId] = tutorReviews;
-    window.localStorage.setItem("demo-reviews", JSON.stringify(reviews));
-    setReviews(reviews);
+    
+    currentReviews[request.tutorId] = tutorReviews;
+    window.localStorage.setItem("demo-reviews", JSON.stringify(currentReviews));
+    setReviews(currentReviews);
     setReviewText("");
     setReviewRating(5);
     setShowReviewModal(false);
@@ -378,7 +407,6 @@ export default function DemoPage() {
         </div>
       </section>
 
-
       <section className="text-sm text-sea/60">
         <p>
           Stripe決済はテストモードで動作します。成功後、
@@ -386,6 +414,7 @@ export default function DemoPage() {
         </p>
       </section>
 
+      {/* 依頼モーダル */}
       {showRequestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
@@ -444,6 +473,7 @@ export default function DemoPage() {
         </div>
       )}
 
+      {/* レビューモーダル */}
       {showReviewModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
