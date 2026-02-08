@@ -400,7 +400,6 @@ export default function DemoPage() {
                 </span>
               ))}
             </div>
-            <p className="mt-3 text-sm text-sea/80">{tutor.bio}</p>
             {activeRole === "student" && (
               <button
                 className={`btn mt-4 ${tutor.id === request.tutorId ? "btn-primary" : "btn-secondary"}`}
