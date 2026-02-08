@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../lib/supabase/client";
+import { getSupabaseClient } from "../../lib/supabase/client";
 
 interface Profile {
   id: string;
@@ -17,6 +17,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const load = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData.session;
       if (!session) {

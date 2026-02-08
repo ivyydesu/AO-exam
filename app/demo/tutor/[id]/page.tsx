@@ -1,62 +1,53 @@
 import Link from "next/link";
 
+const makeAvatar = (skin: string, hair: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 160 160">
+      <rect width="160" height="160" rx="24" fill="${skin}"/>
+      <circle cx="80" cy="70" r="36" fill="#F7D7C4"/>
+      <path d="M44 70c8-22 64-22 72 0v12H44z" fill="${hair}"/>
+      <circle cx="68" cy="72" r="4" fill="#333"/>
+      <circle cx="92" cy="72" r="4" fill="#333"/>
+      <path d="M68 92c8 8 16 8 24 0" stroke="#333" stroke-width="4" fill="none" stroke-linecap="round"/>
+    </svg>`
+  )}`;
+
 const tutors = [
   {
     id: "tutor-1",
     name: "佐藤 亮太",
-    university: "早稲田大学 政治経済学部",
+    university: "早稲田大学",
+    department: "政治経済学部",
+    acceptedUniversities: ["慶應義塾大学 経済学部", "上智大学 総合グローバル学部"],
+    taughtCount: 128,
     rating: 4.8,
     reviews: 42,
     specialties: ["志望理由書", "面接", "活動実績の言語化"],
-    bio: "AO合格率95%。元学生会。書類→面接まで一気通貫で伴走。",
-    experience: [
-      "AO入試指導 120名以上",
-      "学生会副代表（面接経験多数）",
-      "高校向けワークショップ講師"
-    ],
-    achievements: [
-      "合格実績: 早稲田/慶應/上智",
-      "添削満足度 4.9/5.0",
-      "平均返信速度 2時間以内"
-    ]
+    avatar: makeAvatar("#E6F0FF", "#2B3A67")
   },
   {
     id: "tutor-2",
     name: "山本 なお",
-    university: "慶應義塾大学 環境情報学部",
+    university: "慶應義塾大学",
+    department: "環境情報学部",
+    acceptedUniversities: ["慶應義塾大学 SFC", "ICU 教養学部"],
+    taughtCount: 86,
     rating: 4.6,
     reviews: 30,
     specialties: ["探究テーマ設計", "ポートフォリオ", "自己PR"],
-    bio: "SFC対策専門。独自の質問集で準備しやすいと評判。",
-    experience: [
-      "SFC合格者メンター 80名",
-      "探究テーマ伴走 50件",
-      "プレゼン指導経験あり"
-    ],
-    achievements: [
-      "合格実績: 慶應SFC/ICU",
-      "ポートフォリオ制作支援",
-      "面接対策テンプレ提供"
-    ]
+    avatar: makeAvatar("#FFF1E6", "#5C3A2E")
   },
   {
     id: "tutor-3",
     name: "高橋 遼",
-    university: "上智大学 総合グローバル学部",
+    university: "上智大学",
+    department: "総合グローバル学部",
+    acceptedUniversities: ["ICU 教養学部", "明治大学 国際日本学部"],
+    taughtCount: 102,
     rating: 4.9,
     reviews: 55,
     specialties: ["英語面接", "留学経験", "国際系志望"],
-    bio: "英語面接に強い。海外経験を活かしたストーリー構築が得意。",
-    experience: [
-      "海外インターン2回",
-      "英語面接対策 70名",
-      "国際系学部の合格サポート"
-    ],
-    achievements: [
-      "合格実績: 上智/ICU/国際系",
-      "英語面接合格率 93%",
-      "自己PR構築ワーク実施"
-    ]
+    avatar: makeAvatar("#E9F7F1", "#1F3B2C")
   }
 ];
 
@@ -78,7 +69,7 @@ export default function TutorDetailPage({ params }: { params: { id: string } }) 
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sea">Tutor Profile</p>
           <h1 className="text-3xl font-display font-semibold text-ink">{tutor.name}</h1>
-          <p className="text-sm text-sea/70 mt-1">{tutor.university}</p>
+          <p className="text-sm text-sea/70 mt-1">{tutor.university} / {tutor.department}</p>
         </div>
         <div className="flex gap-2">
           <Link className="btn btn-secondary" href="/demo">高校生画面</Link>
@@ -86,41 +77,29 @@ export default function TutorDetailPage({ params }: { params: { id: string } }) 
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="card p-5">
-          <p className="text-sm text-sea/60">評価</p>
-          <p className="text-2xl font-semibold text-accent">★ {tutor.rating}</p>
-          <p className="text-sm text-sea/60">レビュー {tutor.reviews}件</p>
+      <section className="grid gap-4 md:grid-cols-[260px_1fr]">
+        <div className="card p-5 grid gap-4">
+          <img className="w-full rounded-2xl object-cover" src={tutor.avatar} alt={`${tutor.name}の写真`} />
+          <div className="grid gap-1 text-sm text-sea/70">
+            <p>評価 ★ {tutor.rating}</p>
+            <p>レビュー {tutor.reviews}件</p>
+            <p>指導人数 {tutor.taughtCount}名</p>
+          </div>
         </div>
-        <div className="card p-5 md:col-span-2">
+        <div className="card p-5 grid gap-4">
           <h2 className="text-lg font-semibold text-sea">プロフィール</h2>
-          <p className="mt-2 text-sm text-sea/80">{tutor.bio}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="grid gap-2 text-sm text-sea/80">
+            <p>現在の大学・学科: {tutor.university} / {tutor.department}</p>
+            <p>合格大学: {tutor.acceptedUniversities.join(" / ")}</p>
+            <p>これまで教えてきた人数: {tutor.taughtCount}名</p>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
             {tutor.specialties.map((tag) => (
               <span key={tag} className="text-xs rounded-full border border-sand px-3 py-1 text-sea/70">
                 {tag}
               </span>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="card p-5">
-          <h3 className="text-lg font-semibold text-sea">経歴・実績</h3>
-          <ul className="mt-3 grid gap-2 text-sm text-sea/80">
-            {tutor.experience.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="card p-5">
-          <h3 className="text-lg font-semibold text-sea">合格実績・成果</h3>
-          <ul className="mt-3 grid gap-2 text-sm text-sea/80">
-            {tutor.achievements.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
         </div>
       </section>
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { supabase } from "../../../lib/supabase/client";
+import { getSupabaseClient } from "../../../lib/supabase/client";
 
 interface Message {
   id: string;
@@ -21,6 +21,8 @@ export default function ChatPage() {
 
   useEffect(() => {
     const load = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
       const { data: sessionData } = await supabase.auth.getSession();
       setUserId(sessionData.session?.user.id ?? null);
       const { data } = await supabase
@@ -32,6 +34,8 @@ export default function ChatPage() {
     };
     load();
 
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
     const channel = supabase
       .channel(`messages-${requestId}`)
       .on(
@@ -50,6 +54,8 @@ export default function ChatPage() {
 
   const sendMessage = async () => {
     if (!content.trim() || !userId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
     await supabase.from("messages").insert({
       request_id: requestId,
       sender_id: userId,

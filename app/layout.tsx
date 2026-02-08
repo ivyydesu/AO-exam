@@ -14,8 +14,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ja" className={`${display.variable} ${body.variable}`}>
       <body>
-        <main className="bg-[radial-gradient(circle_at_top,_#fef9f0,_#f7f4ef,_#e8dfc9)]">
-          <div className="mx-auto max-w-6xl px-6 py-10">
+        <main className="relative">
+          <div className="accent-gradient h-1" />
+          <div className="pointer-events-none absolute left-[-120px] top-24 h-64 w-64 rounded-full bg-[#E0F2FE]/60 blur-3xl" />
+          <div className="pointer-events-none absolute right-[-120px] top-48 h-64 w-64 rounded-full bg-[#FCE7F3]/60 blur-3xl" />
+          <div className="mx-auto max-w-6xl px-6 py-10 relative z-10">
             {children}
           </div>
         </main>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../../lib/supabase/client";
+import { getSupabaseClient } from "../../../lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +16,12 @@ export default function LoginPage() {
     event.preventDefault();
     setError(null);
     setLoading(true);
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setLoading(false);
+      setError("Supabaseが初期化されていません");
+      return;
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {

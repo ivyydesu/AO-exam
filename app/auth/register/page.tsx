@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../../lib/supabase/client";
+import { getSupabaseClient } from "../../../lib/supabase/client";
 
 const roles = [
   { value: "student", label: "高校生（依頼者）" },
@@ -26,6 +26,12 @@ export default function RegisterPage() {
     setError(null);
     setLoading(true);
 
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setLoading(false);
+      setError("Supabaseが初期化されていません");
+      return;
+    }
     const { data, error } = await supabase.auth.signUp({
       email,
       password

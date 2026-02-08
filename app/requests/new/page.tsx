@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabase/client";
+import { getSupabaseClient } from "../../../lib/supabase/client";
 
 export default function RequestNewPage() {
   const router = useRouter();
@@ -15,6 +15,8 @@ export default function RequestNewPage() {
 
   useEffect(() => {
     const load = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
       const { data } = await supabase.auth.getSession();
       setSessionUserId(data.session?.user.id ?? null);
     };
@@ -31,6 +33,12 @@ export default function RequestNewPage() {
     }
 
     setLoading(true);
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setLoading(false);
+      setError("Supabaseが初期化されていません");
+      return;
+    }
     const { data, error } = await supabase
       .from("requests")
       .insert({

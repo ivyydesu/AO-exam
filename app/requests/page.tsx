@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../lib/supabase/client";
+import { getSupabaseClient } from "../../lib/supabase/client";
 
 interface RequestRow {
   id: string;
@@ -21,6 +21,8 @@ export default function RequestsPage() {
 
   useEffect(() => {
     const load = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
       const { data } = await supabase
         .from("requests_with_profile")
         .select("id, title, description, budget, status, created_at, requester_id, requester_name")

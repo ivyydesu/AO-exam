@@ -3,34 +3,58 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
+const makeAvatar = (skin: string, hair: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+      <rect width="160" height="160" rx="24" fill="${skin}"/>
+      <circle cx="80" cy="70" r="36" fill="#F7D7C4"/>
+      <path d="M44 70c8-22 64-22 72 0v12H44z" fill="${hair}"/>
+      <circle cx="68" cy="72" r="4" fill="#333"/>
+      <circle cx="92" cy="72" r="4" fill="#333"/>
+      <path d="M68 92c8 8 16 8 24 0" stroke="#333" stroke-width="4" fill="none" stroke-linecap="round"/>
+    </svg>`
+  )}`;
+
 // デモデータ
 const demoTutors = [
   {
     id: "tutor-1",
     name: "佐藤 亮太",
-    university: "早稲田大学 政治経済学部",
+    university: "早稲田大学",
+    department: "政治経済学部",
+    acceptedUniversities: ["慶應義塾大学 経済学部", "上智大学 総合グローバル学部"],
+    taughtCount: 128,
     rating: 4.8,
     reviews: 42,
     specialties: ["志望理由書", "面接", "活動実績の言語化"],
-    bio: "AO合格率95%。元学生会。書類→面接まで一気通貫で伴走。"
+    price: 15000,
+    avatar: makeAvatar("#E6F0FF", "#2B3A67")
   },
   {
     id: "tutor-2",
     name: "山本 なお",
-    university: "慶應義塾大学 環境情報学部",
+    university: "慶應義塾大学",
+    department: "環境情報学部",
+    acceptedUniversities: ["慶應義塾大学 SFC", "ICU 教養学部"],
+    taughtCount: 86,
     rating: 4.6,
     reviews: 30,
     specialties: ["探究テーマ設計", "ポートフォリオ", "自己PR"],
-    bio: "SFC対策専門。独自の質問集で準備しやすいと評判。"
+    price: 18000,
+    avatar: makeAvatar("#FFF1E6", "#5C3A2E")
   },
   {
     id: "tutor-3",
     name: "高橋 遼",
-    university: "上智大学 総合グローバル学部",
+    university: "上智大学",
+    department: "総合グローバル学部",
+    acceptedUniversities: ["ICU 教養学部", "明治大学 国際日本学部"],
+    taughtCount: 102,
     rating: 4.9,
     reviews: 55,
     specialties: ["英語面接", "留学経験", "国際系志望"],
-    bio: "英語面接に強い。海外経験を活かしたストーリー構築が得意。"
+    price: 20000,
+    avatar: makeAvatar("#E9F7F1", "#1F3B2C")
   }
 ];
 
@@ -228,30 +252,137 @@ export default function DemoPage() {
   };
 
   return (
-    <div className="grid gap-8">
-      <header className="grid gap-4">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sea">Demo Flow</p>
-        <h1 className="text-4xl font-display font-semibold text-ink">プレゼン用MVP（ログインなし）</h1>
-        <p className="text-sea/80 max-w-2xl">
-          高校生が先輩に依頼 → 受注 → Stripeエスクロー支払い → 対応完了で確定、までを一画面で再現。
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {([
-            { key: "student", label: "高校生" },
-            { key: "tutor", label: "大学生" },
-            { key: "admin", label: "運営" }
-          ] as const).map((role) => (
-            <button
-              key={role.key}
-              className={`btn ${activeRole === role.key ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => setActiveRole(role.key)}
-            >
-              {role.label}
-            </button>
-          ))}
-          <button className="btn border border-sea text-sea" onClick={resetDemo}>リセット</button>
+    <div className="grid gap-10">
+      <div className="rounded-3xl bg-white/90 shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-sand px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-accent text-white grid place-items-center font-bold">AO</div>
+            <p className="text-xl font-semibold text-ink">AO Match</p>
+          </div>
+          <div className="flex-1 max-w-xl">
+            <div className="flex items-center gap-2 rounded-full border border-sand bg-white px-4 py-2">
+              <span className="text-xs text-sea/60">サービス</span>
+              <input className="flex-1 bg-transparent text-sm outline-none" placeholder="キーワードで検索" />
+              <button className="text-sm text-sea">検索</button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-sea/70">
+            <Link href="/status">取引管理</Link>
+            <Link href="/cases">案件管理</Link>
+            <Link href="/favorites">お気に入り</Link>
+            <button className="btn btn-secondary">出品する</button>
+            <details className="relative">
+              <summary className="list-none cursor-pointer">
+                <div className="h-9 w-9 rounded-full bg-sand/70 grid place-items-center text-xs">👤</div>
+              </summary>
+              <div className="absolute right-0 mt-3 w-56 rounded-xl border border-sand bg-white p-3 shadow-lg">
+                <p className="text-sm font-semibold text-sea">kota0507</p>
+                <div className="mt-2 grid gap-2 text-sm text-sea/70">
+                  <Link href="/status">注文履歴</Link>
+                  <Link href="/favorites">お気に入り</Link>
+                  <Link href="/settings">設定</Link>
+                </div>
+              </div>
+            </details>
+          </div>
+        </header>
+        <div className="flex flex-wrap items-center gap-4 px-6 py-3 text-sm text-sea/70">
+          <span>サービスを探す</span>
+          <span>プロ人材を探す</span>
+          <span>ノウハウ・素材を探す</span>
+          <span className="rounded-full bg-accent/10 px-3 py-1 text-accent">NEW</span>
         </div>
-      </header>
+      </div>
+
+      <section className="grid gap-6 lg:grid-cols-[240px_1fr]">
+        <aside className="card p-5 text-sm text-sea/70">
+          <p className="text-sm font-semibold text-sea mb-3">カテゴリから探す</p>
+          <div className="grid gap-2">
+            {[
+              "志望理由書・自己PR",
+              "面接練習",
+              "探究テーマ設計",
+              "ポートフォリオ制作",
+              "英語面接対策",
+              "推薦入試対策",
+              "学部別対策"
+            ].map((cat) => (
+              <div key={cat} className="flex items-center justify-between rounded-lg px-2 py-1 hover:bg-cloud">
+                <span>{cat}</span>
+                <span>›</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="grid gap-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              { title: "新着Pick Up!", desc: "注目の先輩を毎日更新", color: "from-blue-500/80 to-blue-200/60" },
+              { title: "合格者インタビュー", desc: "実績から選ぶAO対策", color: "from-emerald-500/70 to-emerald-200/60" },
+              { title: "面接強化ウィーク", desc: "直前対策もOK", color: "from-orange-500/70 to-orange-200/60" }
+            ].map((item) => (
+              <div key={item.title} className={`rounded-2xl bg-gradient-to-br ${item.color} p-5 text-white`}>
+                <p className="text-sm font-semibold">{item.title}</p>
+                <p className="mt-2 text-xs text-white/90">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="card p-6 grid gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl font-semibold text-sea">人気の先輩</h2>
+              <div className="flex gap-2 text-xs text-sea/60">
+                <span>おすすめ</span>
+                <span>評価順</span>
+                <span>新着</span>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {demoTutors.map((tutor) => (
+                <div key={tutor.id} className={`rounded-2xl border border-sand bg-white p-4 shadow-sm ${tutor.id === request.tutorId ? "ring-2 ring-accent/50" : ""}`}>
+                  <div className="flex items-center gap-3">
+                    <img className="h-14 w-14 rounded-2xl object-cover" src={tutor.avatar} alt={`${tutor.name}の写真`} />
+                    <div>
+                      <p className="text-sm font-semibold text-sea">{tutor.name}</p>
+                      <p className="text-xs text-sea/60">{tutor.university} / {tutor.department}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {tutor.specialties.slice(0, 2).map((tag) => (
+                      <span key={tag} className="text-[11px] rounded-full border border-sand px-2 py-0.5 text-sea/70">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-sea/60">指導人数 {tutor.taughtCount}名</p>
+                  <div className="mt-2 flex items-center justify-between text-xs text-sea/70">
+                    <span>★ {tutor.rating}（{tutor.reviews}）</span>
+                    <span className="text-sea font-semibold">¥{tutor.price.toLocaleString()}〜</span>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {activeRole === "student" && (
+                      <button
+                        className="btn btn-primary w-full"
+                        onClick={() => {
+                          updateField("tutorId", tutor.id);
+                          setShowRequestModal(true);
+                        }}
+                      >
+                        この先輩に依頼
+                      </button>
+                    )}
+                    <Link className="btn w-full border border-sea text-sea" href={`/service/${tutor.id}`}>
+                      商品ページを見る
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         {demoTutors.map((tutor) => (
@@ -370,38 +501,9 @@ export default function DemoPage() {
           {request.paymentIntentId && (
             <p className="text-xs text-sea/60">PaymentIntent: {request.paymentIntentId}</p>
           )}
-        </div>
-
-        <div className="card p-6 grid gap-4">
-          <h2 className="text-xl font-semibold text-sea">応募状況</h2>
-          <p className="text-sm text-sea/70">依頼の進行状況を確認できます。</p>
-          <div className="grid gap-3">
-            {([
-              { key: "draft", label: "依頼作成" },
-              { key: "accepted", label: "受注承諾" },
-              { key: "escrowed", label: "支払い完了" },
-              { key: "completed", label: "完了" }
-            ] as const).map((step) => {
-              const isActive = request.status === step.key;
-              const isDone =
-                ["draft", "accepted", "escrowed", "completed"].indexOf(request.status) >=
-                ["draft", "accepted", "escrowed", "completed"].indexOf(step.key);
-              return (
-                <div key={step.key} className="flex items-center gap-3">
-                  <div
-                    className={`h-3 w-3 rounded-full ${isDone ? "bg-accent" : "bg-sand"} ${isActive ? "ring-2 ring-accent/60" : ""}`}
-                  />
-                  <p className={`text-sm ${isDone ? "text-sea" : "text-sea/50"}`}>{step.label}</p>
-                </div>
-              );
-            })}
-          </div>
-          <div className="rounded-xl border border-sand p-4 text-sm text-sea/70">
-            <p>現在: {request.status}</p>
-            <p>担当予定: {selectedTutor.name}</p>
-            <p>予算: ¥{request.budget.toLocaleString()}</p>
-          </div>
-          <p className="text-xs text-sea/60">受注は大学生画面で行われます。</p>
+          <Link className="btn w-fit border border-sea text-sea" href="/status">
+            応募状況を確認
+          </Link>
         </div>
       </section>
 
@@ -410,6 +512,48 @@ export default function DemoPage() {
           Stripe決済はテストモードで動作します。成功後、
           <Link className="text-accent" href="/demo">この画面に戻って完了ボタンを押してください。</Link>
         </p>
+      </section>
+
+      <section className="grid gap-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-sea">カテゴリ別人気ランキング</h2>
+          <span className="text-sm text-sea/60">期間: 2/1〜2/7</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            { rank: 1, title: "志望理由書の添削", tutor: "佐藤 亮太", price: "¥15,000" },
+            { rank: 2, title: "面接練習（60分）", tutor: "山本 なお", price: "¥18,000" },
+            { rank: 3, title: "探究テーマ設計", tutor: "高橋 遼", price: "¥20,000" }
+          ].map((item) => (
+            <div key={item.rank} className="card p-4">
+              <div className="flex items-center gap-2 text-sm text-sea/70">
+                <span className="h-6 w-6 rounded-full bg-accent text-white grid place-items-center text-xs">{item.rank}</span>
+                <span>{item.title}</span>
+              </div>
+              <p className="mt-2 text-xs text-sea/60">講師: {item.tutor}</p>
+              <p className="text-sm font-semibold text-sea">{item.price}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-sea">人気ユーザーランキング</h2>
+          <span className="text-sm text-sea/60">今週</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {demoTutors.map((tutor, index) => (
+            <div key={tutor.id} className="card p-4 flex items-center gap-3">
+              <span className="h-7 w-7 rounded-full bg-sea text-white grid place-items-center text-xs">{index + 1}</span>
+              <img className="h-12 w-12 rounded-2xl object-cover" src={tutor.avatar} alt={tutor.name} />
+              <div>
+                <p className="text-sm font-semibold text-sea">{tutor.name}</p>
+                <p className="text-xs text-sea/60">評価 ★ {tutor.rating}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* 依頼モーダル */}

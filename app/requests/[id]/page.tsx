@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../../lib/supabase/client";
+import { getSupabaseClient } from "../../../lib/supabase/client";
 
 interface RequestDetail {
   id: string;
@@ -29,6 +29,8 @@ export default function RequestDetailPage() {
   const [rating, setRating] = useState(5);
 
   const refresh = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
     const { data } = await supabase
       .from("requests_with_profile")
       .select("*")
@@ -39,6 +41,11 @@ export default function RequestDetailPage() {
 
   useEffect(() => {
     const load = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
       const { data: sessionData } = await supabase.auth.getSession();
       setSessionUserId(sessionData.session?.user.id ?? null);
       await refresh();
@@ -65,6 +72,8 @@ export default function RequestDetailPage() {
   const handleAccept = async () => {
     setError(null);
     if (!sessionUserId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
     const { error } = await supabase
       .from("requests")
       .update({ status: "accepted", tutor_id: sessionUserId })
@@ -107,6 +116,8 @@ export default function RequestDetailPage() {
   const handleReview = async () => {
     setError(null);
     if (!sessionUserId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
     const { error } = await supabase.from("reviews").insert({
       request_id: requestId,
       reviewer_id: sessionUserId,
