@@ -122,7 +122,7 @@ export default function DemoPage() {
   const [reviewText, setReviewText] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [selectedReviews, setSelectedReviews] = useState<{ id: string; name: string; rating: number; text: string }[]>(
-    demoReviews["tutor-1"]
+    [...demoReviews["tutor-1"]]
   );
 
   // ローカルストレージからの読み込み
