@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { getClient, getVisitorId } from "../../lib/demoClient";
 
 const makeAvatar = (skin: string, hair: string) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -95,18 +96,33 @@ const emptyRequest: RequestState = {
   chatId: ""
 };
 
+type TutorRecord = typeof demoTutors[number];
+type CategoryRecord = { id: string; name: string };
+type TutorCategoryRecord = { tutor_id: string; category_id: string };
+
 export default function DemoPage() {
   const [activeRole, setActiveRole] = useState<"student" | "tutor" | "admin">("student");
 
   const [request, setRequest] = useState<RequestState>(emptyRequest);
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const [tutorIndex, setTutorIndex] = useState(0);
+  const [tutorAnimate, setTutorAnimate] = useState(true);
+  const [tutorPaused, setTutorPaused] = useState(false);
+  const [visitorId, setVisitorId] = useState<string>("");
+  const [tutors, setTutors] = useState<TutorRecord[]>(demoTutors);
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [tutorCategories, setTutorCategories] = useState<TutorCategoryRecord[]>([]);
+  const [query, setQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
 
   const [hydrated, setHydrated] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewText, setReviewText] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
-  const [reviews, setReviews] = useState<Record<string, { id: string; name: string; rating: number; text: string }[]>>(
-    demoReviews as unknown as Record<string, { id: string; name: string; rating: number; text: string }[]>
+  const [selectedReviews, setSelectedReviews] = useState<{ id: string; name: string; rating: number; text: string }[]>(
+    demoReviews["tutor-1"]
   );
 
   // ローカルストレージからの読み込み
@@ -119,16 +135,128 @@ export default function DemoPage() {
         console.error("Failed to parse demo-request", e);
       }
     }
-    const storedReviews = window.localStorage.getItem("demo-reviews");
-    if (storedReviews) {
-      try {
-        setReviews(JSON.parse(storedReviews));
-      } catch (e) {
-        console.error("Failed to parse demo-reviews", e);
-      }
-    }
     setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    const supabase = getClient();
+    if (!supabase) return;
+    const id = getVisitorId();
+    setVisitorId(id);
+    const load = async () => {
+      const { data: tutorData } = await supabase.from("demo_tutors").select("*");
+      if (tutorData && tutorData.length > 0) {
+        const avatarMap = Object.fromEntries(demoTutors.map((t) => [t.id, t.avatar]));
+        setTutors(
+          tutorData.map((t) => ({
+            ...t,
+            avatar: t.avatar_url || avatarMap[t.id] || avatarMap["tutor-1"]
+          }))
+        );
+      }
+      const { data: categoryData } = await supabase.from("demo_categories").select("*");
+      setCategories(categoryData ?? []);
+      const { data: tcData } = await supabase.from("demo_tutor_categories").select("tutor_id, category_id");
+      setTutorCategories(tcData ?? []);
+      const { data: favData } = await supabase.from("demo_favorites").select("service_id").eq("visitor_id", id);
+      setFavoriteIds(new Set((favData ?? []).map((f) => f.service_id)));
+      const { data: reqData } = await supabase
+        .from("demo_requests")
+        .select("*")
+        .eq("visitor_id", id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (reqData) {
+        setRequest((prev) => ({
+          ...prev,
+          id: reqData.id,
+          title: reqData.title,
+          description: reqData.description,
+          budget: reqData.budget,
+          tutorId: reqData.tutor_id,
+          status: reqData.status,
+          paymentIntentId: reqData.payment_intent_id ?? "",
+          chatId: reqData.chat_id ?? ""
+        }));
+      }
+    };
+    load();
+  }, []);
+
+  const selectedTutor = useMemo(
+    () => tutors.find((tutor) => tutor.id === request.tutorId) ?? tutors[0] ?? demoTutors[0],
+    [request.tutorId, tutors]
+  );
+
+  useEffect(() => {
+    const supabase = getClient();
+    if (!supabase || !selectedTutor?.id) return;
+    const loadReviews = async () => {
+      const { data } = await supabase
+        .from("demo_reviews")
+        .select("id, reviewer_name, rating, review_text")
+        .eq("service_id", selectedTutor.id)
+        .order("created_at", { ascending: false });
+      if (data && data.length > 0) {
+        setSelectedReviews(
+          data.map((r) => ({
+            id: r.id,
+            name: r.reviewer_name,
+            rating: r.rating,
+            text: r.review_text
+          }))
+        );
+      } else {
+        setSelectedReviews(demoReviews[selectedTutor.id] ?? []);
+      }
+    };
+    loadReviews();
+  }, [selectedTutor?.id]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setBannerIndex((prev) => (prev + 1) % 3);
+    }, 3500);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const fallbackTutorCategories: TutorCategoryRecord[] = [
+    { tutor_id: "tutor-1", category_id: "c1" },
+    { tutor_id: "tutor-1", category_id: "c2" },
+    { tutor_id: "tutor-2", category_id: "c3" },
+    { tutor_id: "tutor-3", category_id: "c4" }
+  ];
+
+  const displayedTutors = useMemo(() => {
+    const lower = query.trim().toLowerCase();
+    const effectiveTutorCategories = tutorCategories.length ? tutorCategories : fallbackTutorCategories;
+    return tutors.filter((tutor) => {
+      const matchesQuery =
+        !lower ||
+        [tutor.name, tutor.university, tutor.department, ...(tutor.specialties ?? [])]
+          .join(" ")
+          .toLowerCase()
+          .includes(lower);
+      const matchesCategory =
+        !selectedCategory ||
+        effectiveTutorCategories.some((tc) => tc.tutor_id === tutor.id && tc.category_id === selectedCategory);
+      return matchesQuery && matchesCategory;
+    });
+  }, [tutors, query, selectedCategory, tutorCategories]);
+
+  const slideTutors = useMemo(
+    () => (displayedTutors.length ? displayedTutors : demoTutors),
+    [displayedTutors]
+  );
+
+  useEffect(() => {
+    if (tutorPaused) return;
+    const id = window.setInterval(() => {
+      setTutorIndex((prev) => prev + 1);
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [tutorPaused, slideTutors.length]);
 
   // requestが更新されたらローカルストレージに保存
   useEffect(() => {
@@ -138,39 +266,63 @@ export default function DemoPage() {
 
   // 他のタブとの同期など
   useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === "demo-request" && event.newValue) {
-        setRequest(JSON.parse(event.newValue));
-      }
-    };
     const onFocus = () => {
-      const saved = window.localStorage.getItem("demo-request");
-      if (saved) {
-        setRequest(JSON.parse(saved));
-      }
+      const supabase = getClient();
+      if (!supabase || !visitorId) return;
+      supabase
+        .from("demo_requests")
+        .select("*")
+        .eq("visitor_id", visitorId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setRequest((prev) => ({
+              ...prev,
+              id: data.id,
+              title: data.title,
+              description: data.description,
+              budget: data.budget,
+              tutorId: data.tutor_id,
+              status: data.status,
+              paymentIntentId: data.payment_intent_id ?? "",
+              chatId: data.chat_id ?? ""
+            }));
+          }
+        });
     };
-    window.addEventListener("storage", onStorage);
     window.addEventListener("focus", onFocus);
     return () => {
-      window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [visitorId]);
 
-  const selectedTutor = useMemo(
-    () => demoTutors.find((tutor) => tutor.id === request.tutorId) ?? demoTutors[0],
-    [request.tutorId]
-  );
+  
 
   const updateField = (key: keyof RequestState, value: string | number) => {
     setRequest((prev) => ({ ...prev, [key]: value as RequestState[keyof RequestState] }));
   };
 
-  const createRequest = () => {
-    const id = request.id || crypto.randomUUID();
+  const createRequest = async () => {
+    const supabase = getClient();
+    if (!supabase || !visitorId) return;
+    const { data, error } = await supabase
+      .from("demo_requests")
+      .insert({
+        visitor_id: visitorId,
+        tutor_id: request.tutorId,
+        title: request.title,
+        description: request.description,
+        budget: request.budget,
+        status: "draft"
+      })
+      .select("*")
+      .single();
+    if (error || !data) return;
     setRequest((prev) => ({
       ...prev,
-      id,
+      id: data.id,
       status: "draft"
     }));
   };
@@ -215,6 +367,10 @@ export default function DemoPage() {
         return;
       }
       setRequest((prev) => ({ ...prev, status: "completed" }));
+      const supabase = getClient();
+      if (supabase && request.id) {
+        await supabase.from("demo_requests").update({ status: "completed" }).eq("id", request.id);
+      }
     } catch (e) {
       console.error(e);
       alert("エラーが発生しました");
@@ -231,46 +387,85 @@ export default function DemoPage() {
     window.location.href = `/demo/chat/${request.chatId}`;
   };
 
-  const submitReview = () => {
-    const stored = window.localStorage.getItem("demo-reviews");
-    const currentReviews = stored ? JSON.parse(stored) : {};
-    const tutorReviews = currentReviews[request.tutorId] ?? [];
-    
-    tutorReviews.unshift({
-      id: crypto.randomUUID(),
-      name: "高校生",
+  const toggleFavorite = async (serviceId: string) => {
+    const supabase = getClient();
+    if (!supabase || !visitorId) return;
+    if (favoriteIds.has(serviceId)) {
+      await supabase.from("demo_favorites").delete().eq("visitor_id", visitorId).eq("service_id", serviceId);
+      const next = new Set(favoriteIds);
+      next.delete(serviceId);
+      setFavoriteIds(next);
+      return;
+    }
+    await supabase.from("demo_favorites").insert({ visitor_id: visitorId, service_id: serviceId });
+    setFavoriteIds(new Set([...favoriteIds, serviceId]));
+  };
+
+  const submitReview = async () => {
+    const supabase = getClient();
+    if (!supabase) return;
+    if (!reviewText.trim()) return;
+    await supabase.from("demo_reviews").insert({
+      service_id: request.tutorId,
+      reviewer_name: "高校生",
       rating: reviewRating,
-      text: reviewText
+      review_text: reviewText
     });
-    
-    currentReviews[request.tutorId] = tutorReviews;
-    window.localStorage.setItem("demo-reviews", JSON.stringify(currentReviews));
-    setReviews(currentReviews);
     setReviewText("");
     setReviewRating(5);
     setShowReviewModal(false);
+    const { data } = await supabase
+      .from("demo_reviews")
+      .select("id, reviewer_name, rating, review_text")
+      .eq("service_id", request.tutorId)
+      .order("created_at", { ascending: false });
+    setSelectedReviews(
+      (data ?? []).map((r) => ({ id: r.id, name: r.reviewer_name, rating: r.rating, text: r.review_text }))
+    );
   };
 
   return (
-    <div className="grid gap-10">
-      <div className="rounded-3xl bg-white/90 shadow-sm">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-sand px-6 py-4">
+    <div className="grid gap-10 fade-in">
+      <div className="rounded-3xl bg-white border border-sand slide-up nav-shadow">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-sand px-6 py-3">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-accent text-white grid place-items-center font-bold">AO</div>
+            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#FF6B00] via-[#F43787] to-[#6C5CE7]" />
             <p className="text-xl font-semibold text-ink">AO Match</p>
           </div>
-          <div className="flex-1 max-w-xl">
-            <div className="flex items-center gap-2 rounded-full border border-sand bg-white px-4 py-2">
+          <div className="flex-1 max-w-2xl">
+            <div className="flex items-center gap-2 rounded-full border border-[#B8C2CC] bg-white px-4 py-2 shadow-soft">
               <span className="text-xs text-sea/60">サービス</span>
-              <input className="flex-1 bg-transparent text-sm outline-none" placeholder="キーワードで検索" />
-              <button className="text-sm text-sea">検索</button>
+              <input
+                className="flex-1 bg-transparent text-sm outline-none"
+                placeholder="キーワードで検索"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <button className="text-sm text-sea" aria-label="検索">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="11" cy="11" r="7" stroke="#5B6770" strokeWidth="1.5" />
+                  <path d="M20 20L17 17" stroke="#5B6770" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-sm text-sea/70">
+          <div className="flex items-center gap-4 text-sm text-sea/70">
             <Link href="/status">取引管理</Link>
             <Link href="/cases">案件管理</Link>
             <Link href="/favorites">お気に入り</Link>
-            <button className="btn btn-secondary">出品する</button>
+            <button className="text-accent">受注モードへ切替</button>
+            <div className="h-8 w-8 rounded-full border border-sand grid place-items-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3C8.7 3 6 5.7 6 9v4l-2 2v1h16v-1l-2-2V9c0-3.3-2.7-6-6-6z" stroke="#5B6770" strokeWidth="1.5" />
+                <path d="M9 19a3 3 0 0 0 6 0" stroke="#5B6770" strokeWidth="1.5" />
+              </svg>
+            </div>
+            <div className="h-8 w-8 rounded-full border border-sand grid place-items-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M4 6h16v12H4z" stroke="#5B6770" strokeWidth="1.5" />
+                <path d="M4 7l8 6 8-6" stroke="#5B6770" strokeWidth="1.5" />
+              </svg>
+            </div>
             <details className="relative">
               <summary className="list-none cursor-pointer">
                 <div className="h-9 w-9 rounded-full bg-sand/70 grid place-items-center text-xs">👤</div>
@@ -286,112 +481,265 @@ export default function DemoPage() {
             </details>
           </div>
         </header>
-        <div className="flex flex-wrap items-center gap-4 px-6 py-3 text-sm text-sea/70">
-          <span>サービスを探す</span>
-          <span>プロ人材を探す</span>
-          <span>ノウハウ・素材を探す</span>
-          <span className="rounded-full bg-accent/10 px-3 py-1 text-accent">NEW</span>
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-2 text-sm text-sea/70">
+          <div className="flex flex-wrap gap-6">
+            <details className="relative">
+              <summary className="list-none cursor-pointer">AO対策を探す ▾</summary>
+              <div className="absolute z-10 mt-2 w-48 rounded-xl border border-sand bg-white p-2 shadow-soft">
+                <button className="w-full text-left px-2 py-1 hover:bg-cloud" onClick={() => setSelectedCategory(null)}>すべて表示</button>
+                {(categories.length ? categories : [
+                  { id: "c1", name: "志望理由書・自己PR" },
+                  { id: "c2", name: "面接練習" },
+                  { id: "c3", name: "探究テーマ設計" },
+                  { id: "c4", name: "英語面接対策" }
+                ]).map((cat) => (
+                  <button key={cat.id} className="w-full text-left px-2 py-1 hover:bg-cloud" onClick={() => setSelectedCategory(cat.id)}>
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            </details>
+            <button onClick={() => document.getElementById("popular-mentors")?.scrollIntoView({ behavior: "smooth" })}>
+              先輩メンターを探す ▾
+            </button>
+            <button onClick={() => setQuery("面接")}>
+              書類・面接ノウハウ <span className="ml-2 badge-new">NEW</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="btn btn-secondary">仕事・求人を投稿して募集</button>
+            <button className="text-sea/70">人材を紹介してもらう ▾</button>
+            <button className="text-sea/70">出品する</button>
+          </div>
         </div>
       </div>
 
-      <section className="grid gap-6 lg:grid-cols-[240px_1fr]">
+      <div className="rounded-2xl bg-citrus text-white px-6 py-2 text-sm flex items-center justify-center gap-4 slide-up">
+        <span>今すぐ使えるクーポンを1枚お持ちです</span>
+        <span className="rounded-full bg-white/20 px-3 py-1">10%OFF</span>
+        <span className="rounded-full bg-white/20 px-3 py-1">あと5日</span>
+        <button className="underline">詳細を見る</button>
+      </div>
+
+      <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
         <aside className="card p-5 text-sm text-sea/70">
           <p className="text-sm font-semibold text-sea mb-3">カテゴリから探す</p>
           <div className="grid gap-2">
-            {[
-              "志望理由書・自己PR",
-              "面接練習",
-              "探究テーマ設計",
-              "ポートフォリオ制作",
-              "英語面接対策",
-              "推薦入試対策",
-              "学部別対策"
-            ].map((cat) => (
-              <div key={cat} className="flex items-center justify-between rounded-lg px-2 py-1 hover:bg-cloud">
-                <span>{cat}</span>
+            {(categories.length ? categories : [
+              { id: "c1", name: "志望理由書・自己PR" },
+              { id: "c2", name: "面接練習" },
+              { id: "c3", name: "探究テーマ設計" },
+              { id: "c4", name: "英語面接対策" }
+            ]).map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
+                className={`flex items-center justify-between rounded-lg px-2 py-1 hover:bg-cloud ${
+                  selectedCategory === cat.id ? "bg-cloud text-accent" : ""
+                }`}
+              >
+                <span>{cat.name}</span>
                 <span>›</span>
-              </div>
+              </button>
             ))}
+          </div>
+          <div className="mt-6">
+            <p className="text-sm font-semibold text-sea mb-3">閲覧履歴</p>
+            <div className="grid gap-3">
+              {(displayedTutors.length ? displayedTutors : demoTutors).slice(0, 2).map((tutor) => (
+                <div key={tutor.id} className="rounded-xl border border-[#E5E7EB] bg-white p-2 card-hover">
+                  <div className="aspect-[16/9] rounded-lg bg-sand/50 border border-[#E5E7EB]" />
+                  <p className="mt-2 text-xs text-sea/70">{tutor.name}</p>
+                  <p className="text-xs text-sea/60">★ {tutor.rating}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </aside>
 
         <div className="grid gap-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              { title: "新着Pick Up!", desc: "注目の先輩を毎日更新", color: "from-blue-500/80 to-blue-200/60" },
-              { title: "合格者インタビュー", desc: "実績から選ぶAO対策", color: "from-emerald-500/70 to-emerald-200/60" },
-              { title: "面接強化ウィーク", desc: "直前対策もOK", color: "from-orange-500/70 to-orange-200/60" }
-            ].map((item) => (
-              <div key={item.title} className={`rounded-2xl bg-gradient-to-br ${item.color} p-5 text-white`}>
-                <p className="text-sm font-semibold">{item.title}</p>
-                <p className="mt-2 text-xs text-white/90">{item.desc}</p>
+          <div className="grid gap-4 md:grid-cols-[1fr_1fr_0.8fr] stagger">
+            <div className="rounded-2xl bg-[#FEEAB7] p-6 grid gap-2 shadow-soft card-hover">
+              <p className="text-xl font-bold text-[#0E4A7B]">AO入試対策</p>
+              <p className="text-sm text-[#0E4A7B]">書類も面接も丸ごとおまかせ！</p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="h-10 rounded bg-white/70" />
+                <div className="h-10 rounded bg-white/70" />
+                <div className="h-10 rounded bg-white/70" />
               </div>
-            ))}
+            </div>
+            <div
+              className={`rounded-2xl p-6 text-white grid gap-2 shadow-soft card-hover relative transition-colors duration-500 ${
+                [
+                  "bg-[#59D1C2]",
+                  "bg-[#60A5FA]",
+                  "bg-[#F59E0B]"
+                ][bannerIndex]
+              }`}
+            >
+              <p className="text-lg font-semibold">
+                {["新着 Pick Up!", "人気カテゴリ特集", "直前対策ウィーク"][bannerIndex]}
+              </p>
+              <p className="text-sm">
+                {["旬のサービスをチェック", "評価の高い先輩を紹介", "面接・書類を一気に対策"][bannerIndex]}
+              </p>
+              <div className="mt-2 h-20 rounded-xl bg-white/30" />
+              <button
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white text-sea shadow-soft"
+                onClick={() => setBannerIndex((bannerIndex + 2) % 3)}
+                aria-label="前へ"
+              >
+                ‹
+              </button>
+              <button
+                className="absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white text-sea shadow-soft"
+                onClick={() => setBannerIndex((bannerIndex + 1) % 3)}
+                aria-label="次へ"
+              >
+                ›
+              </button>
+              <div className="mt-3 flex items-center justify-center gap-2 text-xs">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className={`h-2 w-2 rounded-full ${i === bannerIndex ? "bg-white" : "bg-white/40"}`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="rounded-2xl bg-[#FDE3C1] p-6 grid gap-2 shadow-soft card-hover">
+              <p className="text-sm text-[#7C5D35]">AO Match コンテンツマーケット</p>
+              <p className="text-lg font-semibold text-[#7C5D35]">すぐ買えてすぐ使える</p>
+              <button className="mt-2 w-fit rounded-full bg-[#F59E0B] px-3 py-1 text-xs text-white">コンテンツを見る</button>
+            </div>
           </div>
 
-          <div className="card p-6 grid gap-4">
+          <div id="popular-mentors" className="card p-6 grid gap-4 slide-up">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-semibold text-sea">人気の先輩</h2>
               <div className="flex gap-2 text-xs text-sea/60">
-                <span>おすすめ</span>
-                <span>評価順</span>
-                <span>新着</span>
+                <span className="nav-pill">おすすめ</span>
+                <span className="nav-pill">評価順</span>
+                <span className="nav-pill">新着</span>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              {demoTutors.map((tutor) => (
-                <div key={tutor.id} className={`rounded-2xl border border-sand bg-white p-4 shadow-sm ${tutor.id === request.tutorId ? "ring-2 ring-accent/50" : ""}`}>
-                  <div className="flex items-center gap-3">
-                    <img className="h-14 w-14 rounded-2xl object-cover" src={tutor.avatar} alt={`${tutor.name}の写真`} />
-                    <div>
-                      <p className="text-sm font-semibold text-sea">{tutor.name}</p>
-                      <p className="text-xs text-sea/60">{tutor.university} / {tutor.department}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {tutor.specialties.slice(0, 2).map((tag) => (
-                      <span key={tag} className="text-[11px] rounded-full border border-sand px-2 py-0.5 text-sea/70">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-xs text-sea/60">指導人数 {tutor.taughtCount}名</p>
-                  <div className="mt-2 flex items-center justify-between text-xs text-sea/70">
-                    <span>★ {tutor.rating}（{tutor.reviews}）</span>
-                    <span className="text-sea font-semibold">¥{tutor.price.toLocaleString()}〜</span>
-                  </div>
-                  <div className="mt-3 grid gap-2">
-                    {activeRole === "student" && (
+            <div
+              className="relative"
+              onMouseEnter={() => setTutorPaused(true)}
+              onMouseLeave={() => setTutorPaused(false)}
+            >
+              <button
+                className="absolute -left-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white text-sea shadow-soft border border-[#E5E7EB]"
+                onClick={() => setTutorIndex((tutorIndex + slideTutors.length - 1) % slideTutors.length)}
+                aria-label="前へ"
+              >
+                ‹
+              </button>
+              <button
+                className="absolute -right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white text-sea shadow-soft border border-[#E5E7EB]"
+                onClick={() => setTutorIndex((tutorIndex + 1) % slideTutors.length)}
+                aria-label="次へ"
+              >
+                ›
+              </button>
+              <div className="overflow-hidden">
+                <div
+                  className={`flex gap-4 ${tutorAnimate ? "transition-transform duration-700 ease-in-out" : ""}`}
+                  style={{ transform: `translateX(-${(tutorIndex % slideTutors.length) * (100 / 3)}%)` }}
+                  onTransitionEnd={() => {
+                    if (tutorIndex >= slideTutors.length) {
+                      setTutorAnimate(false);
+                      setTutorIndex(0);
+                      requestAnimationFrame(() => setTutorAnimate(true));
+                    }
+                  }}
+                >
+                  {[...slideTutors, ...slideTutors].map((tutor, idx) => (
+                    <div
+                      key={`${tutor.id}-${idx}`}
+                      className={`relative min-w-[calc(33.333%-10.666px)] rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm card-hover ${tutor.id === request.tutorId ? "ring-2 ring-accent/50" : ""}`}
+                    >
                       <button
-                        className="btn btn-primary w-full"
-                        onClick={() => {
-                          updateField("tutorId", tutor.id);
-                          setShowRequestModal(true);
-                        }}
+                        className={`absolute right-3 top-3 h-7 w-7 rounded-full border border-sand bg-white text-xs ${
+                          favoriteIds.has(tutor.id) ? "text-accent" : "text-sea/50"
+                        }`}
+                        onClick={() => toggleFavorite(tutor.id)}
+                        aria-label="お気に入り"
                       >
-                        この先輩に依頼
+                        ♥
                       </button>
-                    )}
-                    <Link className="btn w-full border border-sea text-sea" href={`/service/${tutor.id}`}>
-                      商品ページを見る
-                    </Link>
-                  </div>
+                      <div className="flex items-center gap-3">
+                        <img className="h-14 w-14 rounded-2xl object-cover" src={tutor.avatar} alt={`${tutor.name}の写真`} />
+                        <div>
+                          <p className="text-sm font-semibold text-sea">{tutor.name}</p>
+                          <p className="text-xs text-sea/60">{tutor.university} / {tutor.department}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        {tutor.specialties.slice(0, 2).map((tag) => (
+                          <span key={tag} className="text-[11px] rounded-full border border-sand px-2 py-0.5 text-sea/70">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-sea/60">指導人数 {tutor.taughtCount}名</p>
+                      <div className="mt-2 flex items-center justify-between text-xs text-sea/70">
+                        <span>★ {tutor.rating}（{tutor.reviews}）</span>
+                        <span className="text-sea font-semibold">¥{tutor.price.toLocaleString()}〜</span>
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        {activeRole === "student" && (
+                          <button
+                            className="btn btn-primary w-full"
+                            onClick={() => {
+                              updateField("tutorId", tutor.id);
+                              setShowRequestModal(true);
+                            }}
+                          >
+                            この先輩に依頼
+                          </button>
+                        )}
+                        <Link className="btn w-full border border-sea text-sea" href={`/service/${tutor.id}`}>
+                          商品ページを見る
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div className="mt-3 flex items-center justify-center gap-2">
+                {slideTutors.map((_, i) => (
+                  <button
+                    key={i}
+                    className={`h-2 w-2 rounded-full border ${i === (tutorIndex % slideTutors.length) ? "bg-accent border-accent" : "bg-white border-[#D1D5DB]"}`}
+                    onClick={() => setTutorIndex(i)}
+                    aria-label={`スライド${i + 1}`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        {demoTutors.map((tutor) => (
-          <div key={tutor.id} className={`card p-5 ${tutor.id === request.tutorId ? "border-accent" : ""}`}>
+        {(displayedTutors.length ? displayedTutors : demoTutors).slice(0, 6).map((tutor) => (
+          <div key={tutor.id} className={`card p-5 card-hover relative ${tutor.id === request.tutorId ? "border-accent" : ""}`}>
+            <button
+              className={`absolute right-3 top-3 h-7 w-7 rounded-full border border-sand bg-white text-xs ${
+                favoriteIds.has(tutor.id) ? "text-accent" : "text-sea/50"
+              }`}
+              onClick={() => toggleFavorite(tutor.id)}
+              aria-label="お気に入り"
+            >
+              ♥
+            </button>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-sea">{tutor.name}</h3>
               <span className="text-sm text-accent">★ {tutor.rating}</span>
             </div>
-            <p className="text-sm text-sea/70 mt-1">{tutor.university}</p>
+            <p className="text-sm text-sea/70 mt-1">{tutor.university} / {tutor.department}</p>
             <p className="text-xs text-sea/60 mt-1">レビュー {tutor.reviews}件</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {tutor.specialties.map((tag) => (
@@ -411,100 +759,14 @@ export default function DemoPage() {
                 この先輩に依頼
               </button>
             )}
-            <Link className="btn mt-2 w-fit border border-sea text-sea" href={`/demo/tutor/${tutor.id}`}>
-              詳細を見る
+            <Link className="btn mt-2 w-fit border border-sea text-sea" href={`/service/${tutor.id}`}>
+              商品ページを見る
             </Link>
           </div>
         ))}
       </section>
 
-      <section className="card p-6 grid gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-semibold text-sea">レビュー履歴一覧</h2>
-          <p className="text-sm text-sea/70">対象: {selectedTutor.name}</p>
-        </div>
-        <div className="grid gap-3">
-          {(reviews[selectedTutor.id] ?? []).map((review) => (
-            <div key={review.id} className="rounded-xl border border-sand bg-white/70 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-sea">{review.name}</p>
-                <span className="text-sm text-accent">★ {review.rating}</span>
-              </div>
-              <p className="mt-2 text-sm text-sea/80">{review.text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-6 md:grid-cols-2">
-        <div className="card p-6 grid gap-4">
-          <h2 className="text-xl font-semibold text-sea">高校生画面</h2>
-          <label className="grid gap-2">
-            <span className="label">依頼タイトル</span>
-            <input
-              className="input"
-              value={request.title}
-              onChange={(e) => updateField("title", e.target.value)}
-              placeholder="例: 志望理由書の添削"
-              disabled={activeRole !== "student"}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="label">依頼内容</span>
-            <textarea
-              className="input h-24"
-              value={request.description}
-              onChange={(e) => updateField("description", e.target.value)}
-              placeholder="AO対策の相談内容を書いてください"
-              disabled={activeRole !== "student"}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="label">予算</span>
-            <input
-              className="input"
-              type="number"
-              value={request.budget}
-              onChange={(e) => updateField("budget", Number(e.target.value))}
-              disabled={activeRole !== "student"}
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {request.status === "draft" && (
-              <button className="btn btn-primary" onClick={createRequest} disabled={activeRole !== "student"}>
-                依頼を送る
-              </button>
-            )}
-            {request.status === "accepted" && (
-              <button className="btn btn-secondary" onClick={startCheckout}>
-                Stripeで支払い（エスクロー）
-              </button>
-            )}
-            {request.status === "escrowed" && (
-              <button className="btn btn-secondary" onClick={capturePayment}>
-                対応完了 → 決済確定
-              </button>
-            )}
-            {request.chatId && (
-              <button className="btn border border-sea text-sea" onClick={openChat}>
-                チャットを開く
-              </button>
-            )}
-            {["completed", "escrowed"].includes(request.status) && (
-              <button className="btn btn-primary" onClick={() => setShowReviewModal(true)}>
-                大学生を評価する
-              </button>
-            )}
-          </div>
-          <p className="text-sm text-sea/70">ステータス: {request.status}</p>
-          {request.paymentIntentId && (
-            <p className="text-xs text-sea/60">PaymentIntent: {request.paymentIntentId}</p>
-          )}
-          <Link className="btn w-fit border border-sea text-sea" href="/status">
-            応募状況を確認
-          </Link>
-        </div>
-      </section>
+      {/* ホームからレビュー履歴と高校生画面は削除 */}
 
       <section className="text-sm text-sea/60">
         <p>
