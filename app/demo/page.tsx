@@ -208,7 +208,7 @@ export default function DemoPage() {
           }))
         );
       } else {
-        const fallback = (demoReviews as Record<string, { id: string; name: string; rating: number; text: string }[]>)[selectedTutor.id] ?? [];
+        const fallback = (demoReviews as unknown as Record<string, { id: string; name: string; rating: number; text: string }[]>)[selectedTutor.id] ?? [];
         setSelectedReviews([...fallback]);
       }
     };
