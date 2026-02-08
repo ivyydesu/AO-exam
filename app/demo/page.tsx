@@ -508,9 +508,9 @@ export default function DemoPage() {
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <button className="btn btn-secondary">仕事・求人を投稿して募集</button>
-            <button className="text-sea/70">人材を紹介してもらう ▾</button>
-            <button className="text-sea/70">出品する</button>
+            <button className="btn btn-secondary">依頼を投稿して募集</button>
+            <button className="text-sea/70">先輩を紹介してもらう ▾</button>
+            <button className="text-sea/70">サポートを出品</button>
           </div>
         </div>
       </div>
