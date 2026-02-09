@@ -13,7 +13,9 @@ const config: Config = {
         cloud: "#F7F4EF",
         sand: "#E8DFC9",
         sea: "#1C3C5A",
-        accent: "#E35D5B"
+        accent: "#18A77E",
+        citrus: "#F57C00",
+        mint: "#10B981"
       }
     }
   },

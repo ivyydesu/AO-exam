@@ -1,12 +1,32 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getClient, getVisitorId } from "../../lib/demoClient";
 
-const favorites = [
-  { id: "fav-1", title: "志望理由書の添削", count: 0 }
-];
+type FavoriteItem = { id: string; title: string; tutor: string };
 
 export default function FavoritesPage() {
+  const [items, setItems] = useState<FavoriteItem[]>([]);
+
+  useEffect(() => {
+    const supabase = getClient();
+    if (!supabase) return;
+    const id = getVisitorId();
+    const load = async () => {
+      const { data: favs } = await supabase.from("demo_favorites").select("service_id").eq("visitor_id", id);
+      const { data: tutors } = await supabase.from("demo_tutors").select("id, name");
+      const { data: services } = await supabase.from("demo_services").select("id, title, tutor_id");
+      const tutorMap = new Map((tutors ?? []).map((t) => [t.id, t.name]));
+      const serviceMap = new Map((services ?? []).map((s) => [s.id, s]));
+      const rows = (favs ?? [])
+        .map((f) => serviceMap.get(f.service_id))
+        .filter(Boolean)
+        .map((s: any) => ({ id: s.id, title: s.title, tutor: tutorMap.get(s.tutor_id) ?? "" }));
+      setItems(rows);
+    };
+    load();
+  }, []);
   return (
     <div className="grid gap-8">
       <header className="rounded-3xl bg-white/90 shadow-sm">
@@ -87,17 +107,20 @@ export default function FavoritesPage() {
           </div>
 
           <div className="mt-6 grid gap-4">
-            {favorites.map((fav) => (
+            {items.map((fav) => (
               <div key={fav.id} className="rounded-2xl border border-sand bg-white p-4">
                 <div className="flex items-center gap-4">
                   <div className="h-16 w-16 rounded-xl bg-sand/60" />
                   <div>
                     <p className="text-sm font-semibold text-ink">{fav.title}</p>
-                    <p className="text-xs text-sea/60">お気に入り {fav.count}件</p>
+                    <p className="text-xs text-sea/60">出品者: {fav.tutor}</p>
                   </div>
                 </div>
               </div>
             ))}
+            {items.length === 0 && (
+              <p className="text-sm text-sea/60">お気に入りはまだありません。</p>
+            )}
           </div>
         </div>
       </section>

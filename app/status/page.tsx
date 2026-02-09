@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getClient, getVisitorId } from "../../lib/demoClient";
 
 const tabs = [
   "受付中",
@@ -17,10 +18,20 @@ export default function StatusPage() {
   const [request, setRequest] = useState<any>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("demo-request");
-    if (saved) {
-      setRequest(JSON.parse(saved));
-    }
+    const supabase = getClient();
+    if (!supabase) return;
+    const id = getVisitorId();
+    const load = async () => {
+      const { data } = await supabase
+        .from("demo_requests")
+        .select("*")
+        .eq("visitor_id", id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) setRequest(data);
+    };
+    load();
   }, []);
 
   return (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getClient } from "../../../../lib/demoClient";
 
 interface Message {
   id: string;
@@ -14,26 +15,56 @@ export default function DemoChatPage({ params }: { params: { id: string } }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [role, setRole] = useState<"student" | "tutor">("student");
+  const [requestId, setRequestId] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(`demo-chat-${params.id}`);
-    if (stored) {
-      setMessages(JSON.parse(stored));
-    }
+    const supabase = getClient();
+    if (!supabase) return;
+    const load = async () => {
+      const { data: req } = await supabase
+        .from("demo_requests")
+        .select("id")
+        .eq("chat_id", params.id)
+        .maybeSingle();
+      if (req?.id) {
+        setRequestId(req.id);
+        const { data } = await supabase
+          .from("demo_messages")
+          .select("id, sender_role, content, created_at")
+          .eq("request_id", req.id)
+          .order("created_at", { ascending: true });
+        setMessages(
+          (data ?? []).map((m) => ({
+            id: m.id,
+            sender: m.sender_role as "student" | "tutor",
+            text: m.content,
+            createdAt: m.created_at
+          }))
+        );
+      }
+    };
+    load();
   }, [params.id]);
 
   const send = () => {
     if (!input.trim()) return;
-    const next: Message = {
-      id: crypto.randomUUID(),
-      sender: role,
-      text: input,
-      createdAt: new Date().toISOString()
+    const run = async () => {
+      const supabase = getClient();
+      if (!supabase || !requestId) return;
+      const { data } = await supabase
+        .from("demo_messages")
+        .insert({ request_id: requestId, sender_role: role, content: input })
+        .select("id, sender_role, content, created_at")
+        .single();
+      if (data) {
+        setMessages((prev) => [
+          ...prev,
+          { id: data.id, sender: data.sender_role as "student" | "tutor", text: data.content, createdAt: data.created_at }
+        ]);
+      }
+      setInput("");
     };
-    const updated = [...messages, next];
-    setMessages(updated);
-    window.localStorage.setItem(`demo-chat-${params.id}`, JSON.stringify(updated));
-    setInput("");
+    run();
   };
 
   const createMeet = () => {

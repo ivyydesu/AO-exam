@@ -27,7 +27,7 @@ main {
 }
 
 .card {
-  @apply bg-white/80 backdrop-blur border border-sand rounded-2xl shadow-sm;
+  @apply bg-white border border-sand rounded-2xl shadow-sm;
 }
 
 .btn {
@@ -35,11 +35,65 @@ main {
 }
 
 .btn-primary {
-  @apply bg-accent text-white hover:bg-[#d14f4d];
+  @apply bg-accent text-white hover:bg-[#15906d];
 }
 
 .btn-secondary {
-  @apply bg-sea text-white hover:bg-[#163047];
+  @apply bg-white text-accent border border-accent hover:bg-accent/10;
+}
+
+.shadow-soft {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.nav-shadow {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.card-hover {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+}
+
+.nav-pill {
+  @apply rounded-full border border-sand px-3 py-1 text-xs text-sea/70;
+}
+
+.badge-new {
+  @apply rounded-full border border-[#FF6B00] px-2 py-0.5 text-[10px] text-[#FF6B00];
+}
+
+.fade-in {
+  animation: fadeIn 0.6s ease-out both;
+}
+
+.slide-up {
+  animation: slideUp 0.7s ease-out both;
+}
+
+.stagger > * {
+  animation: slideUp 0.7s ease-out both;
+}
+
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger > *:nth-child(6) { animation-delay: 0.3s; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .input {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getClient, getVisitorId } from "../../../lib/demoClient";
 
 const monthlySales = [
   { month: "9月", value: 98000 },
@@ -27,23 +28,51 @@ export default function DemoRequestPage() {
   const [request, setRequest] = useState<any>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("demo-request");
-    if (saved) {
-      setRequest(JSON.parse(saved));
-    }
+    const supabase = getClient();
+    if (!supabase) return;
+    const id = getVisitorId();
+    const load = async () => {
+      const { data } = await supabase
+        .from("demo_requests")
+        .select("*")
+        .eq("visitor_id", id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) setRequest(data);
+    };
+    load();
   }, []);
 
   const acceptRequest = () => {
-    const next = { ...request, status: "accepted" };
-    window.localStorage.setItem("demo-request", JSON.stringify(next));
-    setRequest(next);
+    const run = async () => {
+      const supabase = getClient();
+      if (!supabase || !request) return;
+      const { data } = await supabase
+        .from("demo_requests")
+        .update({ status: "accepted" })
+        .eq("id", request.id)
+        .select("*")
+        .single();
+      if (data) setRequest(data);
+    };
+    run();
   };
 
   const markPaid = () => {
-    const chatId = request.chatId || crypto.randomUUID();
-    const next = { ...request, status: "escrowed", chatId };
-    window.localStorage.setItem("demo-request", JSON.stringify(next));
-    setRequest(next);
+    const run = async () => {
+      const supabase = getClient();
+      if (!supabase || !request) return;
+      const chatId = request.chat_id || crypto.randomUUID();
+      const { data } = await supabase
+        .from("demo_requests")
+        .update({ status: "escrowed", chat_id: chatId })
+        .eq("id", request.id)
+        .select("*")
+        .single();
+      if (data) setRequest(data);
+    };
+    run();
   };
 
   return (

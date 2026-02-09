@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/demo/page": [
+    "/service/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/demo/page.js"
+      "static/chunks/app/service/[id]/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -11,30 +11,15 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/demo/tutor/[id]/page": [
+    "/demo/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/demo/tutor/[id]/page.js"
+      "static/chunks/app/demo/page.js"
     ],
-    "/demo/request/page": [
+    "/favorites/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/demo/request/page.js"
-    ],
-    "/demo/admin/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/demo/admin/page.js"
-    ],
-    "/demo/checkout-cancel/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/demo/checkout-cancel/page.js"
-    ],
-    "/demo/chat/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/demo/chat/[id]/page.js"
+      "static/chunks/app/favorites/page.js"
     ]
   }
 }
