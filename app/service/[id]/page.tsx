@@ -153,7 +153,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
         experience: data.experience ?? "",
         rating: Number(data.rating ?? 0),
         reviews: Number(data.reviews ?? 0),
-        avatar: data.avatar_url || fallback.avatar
+        avatar: data.avatar_url || fallbackTutors["tutor-1"].avatar
       });
     };
     load();
