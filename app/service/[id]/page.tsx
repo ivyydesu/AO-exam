@@ -16,7 +16,22 @@ const makeAvatar = (skin: string, hair: string) =>
     </svg>`
   )}`;
 
-const fallbackTutors = {
+type Tutor = {
+  id: string;
+  name: string;
+  university: string;
+  department: string;
+  year: string;
+  acceptedUniversities: string[];
+  cramSchool: string;
+  theme: string;
+  experience: string;
+  rating: number;
+  reviews: number;
+  avatar: string;
+};
+
+const fallbackTutors: Record<string, Tutor> = {
   "tutor-1": {
     id: "tutor-1",
     name: "木戸洵成",
@@ -118,7 +133,7 @@ const fallbackTutors = {
 };
 
 export default function ServicePage({ params }: { params: { id: string } }) {
-  const [tutor, setTutor] = useState(fallbackTutors[params.id] ?? fallbackTutors["tutor-1"]);
+  const [tutor, setTutor] = useState<Tutor>(fallbackTutors[params.id] ?? fallbackTutors["tutor-1"]);
 
   useEffect(() => {
     const supabase = getClient();
