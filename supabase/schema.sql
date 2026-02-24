@@ -7,9 +7,49 @@ create table if not exists profiles (
   full_name text not null,
   role text not null check (role in ('student', 'tutor', 'admin')),
   school text,
+  line_user_id text unique,
   stripe_account_id text,
   created_at timestamptz default now()
 );
+
+-- LINE connection states (short-lived, for OAuth CSRF protection)
+create table if not exists line_link_states (
+  state text primary key,
+  user_id uuid not null references profiles(id) on delete cascade,
+  expires_at timestamptz not null,
+  created_at timestamptz default now()
+);
+
+-- Tutor verification workflow
+create table if not exists tutor_verifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references profiles(id) on delete cascade,
+  student_id_image_path text not null,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  reason text,
+  reviewed_by uuid references profiles(id),
+  reviewed_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Public tutor profile for search and listing
+create table if not exists tutor_profiles (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  avatar_url text,
+  university text not null default '',
+  department text not null default '',
+  seminar text not null default '',
+  grade text not null default '',
+  research_theme text not null default '',
+  coaching_experience text not null default '',
+  is_published boolean not null default false,
+  bio text not null default '',
+  updated_at timestamptz default now()
+);
+
+alter table tutor_profiles
+add column if not exists is_published boolean not null default false;
 
 -- Requests
 create table if not exists requests (
@@ -44,6 +84,19 @@ create table if not exists reviews (
   created_at timestamptz default now()
 );
 
+-- Request detail form (4-step + pricing)
+create table if not exists request_details (
+  request_id uuid primary key references requests(id) on delete cascade,
+  support_topic text not null default '',
+  support_method text not null default '',
+  estimated_duration text not null default '',
+  requested_deadline date,
+  suggested_price integer not null default 0,
+  requested_price integer not null default 0,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 -- Realtime (for chat)
 alter publication supabase_realtime add table messages;
 
@@ -71,6 +124,10 @@ alter table profiles enable row level security;
 alter table requests enable row level security;
 alter table messages enable row level security;
 alter table reviews enable row level security;
+alter table request_details enable row level security;
+alter table line_link_states enable row level security;
+alter table tutor_verifications enable row level security;
+alter table tutor_profiles enable row level security;
 
 -- Profiles policies
 create policy "profiles_select" on profiles
@@ -81,6 +138,41 @@ create policy "profiles_insert" on profiles
 
 create policy "profiles_update" on profiles
   for update using (auth.uid() = id);
+
+create policy "line_link_states_service_only" on line_link_states
+  for all using (false) with check (false);
+
+create policy "tutor_verifications_select_own_or_admin" on tutor_verifications
+  for select using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
+
+create policy "tutor_verifications_insert_own" on tutor_verifications
+  for insert with check (auth.uid() = user_id);
+
+create policy "tutor_verifications_update_admin_only" on tutor_verifications
+  for update using (
+    exists (
+      select 1 from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
+
+drop policy if exists "tutor_profiles_select_all" on tutor_profiles;
+create policy "tutor_profiles_select_all" on tutor_profiles
+  for select using (true);
+
+drop policy if exists "tutor_profiles_insert_own" on tutor_profiles;
+create policy "tutor_profiles_insert_own" on tutor_profiles
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "tutor_profiles_update_own" on tutor_profiles;
+create policy "tutor_profiles_update_own" on tutor_profiles
+  for update using (auth.uid() = user_id);
 
 -- Requests policies
 create policy "requests_select" on requests
@@ -106,8 +198,35 @@ create policy "reviews_select" on reviews
 create policy "reviews_insert" on reviews
   for insert with check (auth.uid() = reviewer_id);
 
+drop policy if exists "request_details_select" on request_details;
+create policy "request_details_select" on request_details
+  for select using (auth.uid() is not null);
+
+drop policy if exists "request_details_insert" on request_details;
+create policy "request_details_insert" on request_details
+  for insert with check (
+    exists (
+      select 1 from requests r
+      where r.id = request_id and r.requester_id = auth.uid()
+    )
+  );
+
+drop policy if exists "request_details_update" on request_details;
+create policy "request_details_update" on request_details
+  for update using (
+    exists (
+      select 1 from requests r
+      where r.id = request_id and (r.requester_id = auth.uid() or r.tutor_id = auth.uid())
+    )
+  );
+
 -- Grants for view
 grant select on requests_with_profile to authenticated;
+
+-- Storage bucket for student IDs (private)
+insert into storage.buckets (id, name, public)
+values ('student-ids', 'student-ids', false)
+on conflict (id) do nothing;
 
 -- Demo tables for no-login MVP
 create table if not exists demo_tutors (

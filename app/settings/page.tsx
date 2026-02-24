@@ -1,10 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getSupabaseClient } from "../../lib/supabase/client";
+import DemoTopNav from "../../components/DemoTopNav";
 
 export default function SettingsPage() {
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [lineConnected, setLineConnected] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lineDetail, setLineDetail] = useState<string | null>(null);
+  const [lineTesting, setLineTesting] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("line_user_id")
+        .eq("id", sessionData.session.user.id)
+        .single();
+      if (profile?.line_user_id) setLineConnected(true);
+      const lineStatus = new URLSearchParams(window.location.search).get("line");
+      if (lineStatus === "connected") {
+        setNotice("LINE連携が完了しました。");
+        setLineDetail(null);
+      }
+      if (lineStatus?.startsWith("error")) {
+        const detailMap: Record<string, string> = {
+          error_missing_params: "callbackに code/state がありません。LINE側の遷移不整合です。",
+          error_invalid_state: "state不一致です。古いタブを閉じて、連携を最初からやり直してください。",
+          error_state_expired: "stateの有効期限(10分)が切れました。再度連携してください。",
+          error_exchange_failed: "LINEのcode交換に失敗しました。CHANNEL_ID/SECRET/REDIRECT_URIを再確認してください。",
+          error_save_failed: "DB保存に失敗しました。line_user_id重複の可能性があります。"
+        };
+        setError("LINE連携に失敗しました。");
+        setLineDetail(`${lineStatus}: ${detailMap[lineStatus] ?? "不明なエラーです。サーバーログを確認してください。"}`);
+      }
+    };
+    load();
+  }, []);
 
   const onFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -13,42 +52,73 @@ export default function SettingsPage() {
     setAvatar(url);
   };
 
+  const connectLine = async () => {
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setError("Supabaseが初期化されていません");
+        return;
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        setError("ログインが必要です");
+        return;
+      }
+      const res = await fetch("/api/line/connect/start", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`
+        }
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.authUrl) {
+        setError(payload.error ?? "LINE連携の開始に失敗しました");
+        return;
+      }
+      window.location.href = payload.authUrl;
+    } catch (e) {
+      setError("Failed to fetch: サーバー未起動 or ネットワークエラーです");
+    }
+  };
+
+  const sendLineTest = async () => {
+    setError(null);
+    setNotice(null);
+    setLineTesting(true);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setError("Supabaseが初期化されていません");
+        return;
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        setError("ログインが必要です");
+        return;
+      }
+      const res = await fetch("/api/line/notify/test", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`
+        }
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(payload.error ?? "LINEテスト通知の送信に失敗しました");
+        return;
+      }
+      setNotice("LINEにテスト通知を送信しました。");
+    } catch {
+      setError("Failed to fetch: サーバー未起動 or ネットワークエラーです");
+    } finally {
+      setLineTesting(false);
+    }
+  };
+
   return (
     <div className="grid gap-8">
-      <header className="rounded-3xl bg-white/90 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sand px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-accent text-white grid place-items-center font-bold">AO</div>
-            <p className="text-xl font-semibold text-ink">AO Match</p>
-          </div>
-          <div className="flex-1 max-w-xl">
-            <div className="flex items-center gap-2 rounded-full border border-sand bg-white px-4 py-2">
-              <span className="text-xs text-sea/60">サービス</span>
-              <input className="flex-1 bg-transparent text-sm outline-none" placeholder="キーワードで検索" />
-              <button className="text-sm text-sea">検索</button>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 text-sm text-sea/70">
-            <Link href="/status">取引管理</Link>
-            <Link href="/cases">案件管理</Link>
-            <Link href="/favorites">お気に入り</Link>
-            <Link className="btn btn-secondary" href="/demo">サービスを探す</Link>
-            <details className="relative">
-              <summary className="list-none cursor-pointer">
-                <div className="h-9 w-9 rounded-full bg-sand/70 grid place-items-center text-xs">👤</div>
-              </summary>
-              <div className="absolute right-0 mt-3 w-56 rounded-xl border border-sand bg-white p-3 shadow-lg">
-                <p className="text-sm font-semibold text-sea">kota0507</p>
-                <div className="mt-2 grid gap-2 text-sm text-sea/70">
-                  <Link href="/status">注文履歴</Link>
-                  <Link href="/favorites">お気に入り</Link>
-                  <Link href="/settings">設定</Link>
-                </div>
-              </div>
-            </details>
-          </div>
-        </div>
-      </header>
+      <DemoTopNav />
 
       <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
         <aside className="card p-6 text-sm text-sea/70">
@@ -77,6 +147,13 @@ export default function SettingsPage() {
 
         <div className="card p-6 grid gap-6">
           <h1 className="text-2xl font-semibold text-ink">設定</h1>
+          {notice && <p className="text-sm text-sea">{notice}</p>}
+          {error && <p className="text-sm text-accent">{error}</p>}
+          {lineDetail && (
+            <p className="rounded-lg border border-sand bg-cloud px-3 py-2 text-xs text-sea/85">
+              LINE詳細: {lineDetail}
+            </p>
+          )}
 
           <div className="grid gap-4">
             <h2 className="text-lg font-semibold text-sea">アカウント情報</h2>
@@ -123,6 +200,26 @@ export default function SettingsPage() {
                   <span className="text-accent">{row.action}</span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            <h2 className="text-lg font-semibold text-sea">LINE連携（通知用）</h2>
+            <p className="text-sm text-sea/70">
+              大学生: 依頼通知 / 高校生: 許可通知 を受け取れます。
+            </p>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-sea/80">状態: {lineConnected ? "連携済み" : "未連携"}</span>
+              {!lineConnected && (
+                <button className="btn btn-primary" type="button" onClick={connectLine}>
+                  LINEを連携する
+                </button>
+              )}
+              {lineConnected && (
+                <button className="btn btn-secondary" type="button" onClick={sendLineTest} disabled={lineTesting}>
+                  {lineTesting ? "送信中..." : "テスト通知を送る"}
+                </button>
+              )}
             </div>
           </div>
         </div>

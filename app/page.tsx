@@ -15,6 +15,7 @@ export default function Home() {
           依頼→受注→Stripeエスクロー→完了を一連で見せるプレゼン用MVPを用意しました。
         </p>
         <div className="flex flex-wrap gap-3">
+          <Link href="/auth/role" className="btn btn-primary">登録/ログイン</Link>
           <Link href="/demo" className="btn btn-primary">デモを開く</Link>
           <Link href="/requests" className="btn btn-secondary">既存画面へ</Link>
         </div>

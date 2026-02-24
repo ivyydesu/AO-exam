@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
+import { getAppModeFromRequest } from "../../../../lib/appMode";
 
 export async function POST(req: NextRequest) {
   const { requestId } = await req.json();
+  const appMode = getAppModeFromRequest(req);
+  const allowTestBypass = process.env.NODE_ENV !== "production" && appMode === "test";
 
   const supabaseAdmin = getSupabaseAdmin();
   const { data: request, error } = await supabaseAdmin
@@ -30,12 +33,36 @@ export async function POST(req: NextRequest) {
     .eq("id", request.tutor_id)
     .single();
 
-  if (!tutorProfile?.stripe_account_id) {
+  const tutorStripeAccountId = tutorProfile?.stripe_account_id ?? null;
+  if (!tutorStripeAccountId && !allowTestBypass) {
     return NextResponse.json({ error: "Tutor missing Stripe account" }, { status: 400 });
+  }
+
+  const { data: verification } = await supabaseAdmin
+    .from("tutor_verifications")
+    .select("status")
+    .eq("user_id", request.tutor_id)
+    .maybeSingle();
+
+  if (verification?.status !== "approved" && !allowTestBypass) {
+    return NextResponse.json({ error: "Tutor verification is not approved yet" }, { status: 403 });
   }
 
   const feePercent = Number(process.env.PLATFORM_FEE_PERCENT ?? 15);
   const feeAmount = Math.floor((request.budget * feePercent) / 100);
+
+  const paymentIntentData: {
+    capture_method: "manual";
+    application_fee_amount?: number;
+    transfer_data?: { destination: string };
+  } = {
+    capture_method: "manual"
+  };
+
+  if (tutorStripeAccountId) {
+    paymentIntentData.application_fee_amount = feeAmount;
+    paymentIntentData.transfer_data = { destination: tutorStripeAccountId };
+  }
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -50,13 +77,7 @@ export async function POST(req: NextRequest) {
         quantity: 1
       }
     ],
-    payment_intent_data: {
-      capture_method: "manual",
-      application_fee_amount: feeAmount,
-      transfer_data: {
-        destination: tutorProfile.stripe_account_id
-      }
-    },
+    payment_intent_data: paymentIntentData,
     metadata: {
       request_id: request.id
     },
@@ -72,5 +93,13 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", request.id);
 
-  return NextResponse.json({ url: session.url });
+  return NextResponse.json({
+    url: session.url,
+    warning:
+      !tutorStripeAccountId
+        ? "test_mode_without_connect_account"
+        : verification?.status !== "approved" && allowTestBypass
+          ? "test_mode_without_tutor_verification"
+          : null
+  });
 }

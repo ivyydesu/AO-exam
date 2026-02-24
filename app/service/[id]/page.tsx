@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getClient } from "../../../lib/demoClient";
+import { getSupabaseClient } from "../../../lib/supabase/client";
 
 const makeAvatar = (skin: string, hair: string) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -134,27 +135,76 @@ const fallbackTutors: Record<string, Tutor> = {
 
 export default function ServicePage({ params }: { params: { id: string } }) {
   const [tutor, setTutor] = useState<Tutor>(fallbackTutors[params.id] ?? fallbackTutors["tutor-1"]);
+  const [sessionRole, setSessionRole] = useState<"student" | "tutor" | "admin" | null>(null);
+
+  useEffect(() => {
+    const loadRole = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData.session?.user.id;
+      if (!uid) return;
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
+      setSessionRole((profile?.role as "student" | "tutor" | "admin" | null) ?? null);
+    };
+    loadRole();
+  }, []);
 
   useEffect(() => {
     const supabase = getClient();
     if (!supabase) return;
     const load = async () => {
       const { data } = await supabase.from("demo_tutors").select("*").eq("id", params.id).maybeSingle();
-      if (!data) return;
-      setTutor({
-        id: data.id,
-        name: data.name,
-        university: data.university,
-        department: data.department,
-        year: data.year ?? "2年",
-        acceptedUniversities: data.accepted_universities ?? [],
-        cramSchool: data.cram_school ?? "なし",
-        theme: data.theme ?? "",
-        experience: data.experience ?? "",
-        rating: Number(data.rating ?? 0),
-        reviews: Number(data.reviews ?? 0),
-        avatar: data.avatar_url || fallbackTutors["tutor-1"].avatar
-      });
+      if (data) {
+        setTutor({
+          id: data.id,
+          name: data.name,
+          university: data.university,
+          department: data.department,
+          year: data.year ?? "2年",
+          acceptedUniversities: data.accepted_universities ?? [],
+          cramSchool: data.cram_school ?? "なし",
+          theme: data.theme ?? "",
+          experience: data.experience ?? "",
+          rating: Number(data.rating ?? 0),
+          reviews: Number(data.reviews ?? 0),
+          avatar: data.avatar_url || fallbackTutors["tutor-1"].avatar
+        });
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/tutors/${params.id}`);
+        const payload = await res.json();
+        if (!res.ok || !payload.item) return;
+        const item = payload.item as {
+          id: string;
+          name: string;
+          university: string;
+          department: string;
+          grade: string;
+          school: string;
+          researchTheme: string;
+          coachingExperience: string;
+          avatar: string;
+        };
+        setTutor({
+          id: item.id,
+          name: item.name,
+          university: item.university || "",
+          department: item.department || "",
+          year: item.grade || "",
+          acceptedUniversities: item.school ? [item.school] : [],
+          cramSchool: "未設定",
+          theme: item.researchTheme || "",
+          experience: item.coachingExperience || "",
+          rating: 5,
+          reviews: 0,
+          avatar: item.avatar || fallbackTutors["tutor-1"].avatar
+        });
+      } catch {
+        // ignore
+      }
     };
     load();
   }, [params.id]);
@@ -178,14 +228,21 @@ export default function ServicePage({ params }: { params: { id: string } }) {
         <div className="card p-5 grid gap-3">
           <img className="w-full rounded-2xl object-cover" src={tutor.avatar} alt={tutor.name} />
           <p className="text-sm text-sea/60">評価 ★ {tutor.rating}（{tutor.reviews}）</p>
-          <button className="btn btn-primary w-full">この先輩に依頼</button>
+          {sessionRole === "tutor" ? (
+            <p className="text-xs rounded-xl border border-sand bg-cloud px-3 py-2 text-sea/75">
+              大学生アカウントでは依頼はできません（高校生アカウントのみ）
+            </p>
+          ) : (
+            <Link className="btn btn-primary w-full text-center" href={`/requests/new?tutorId=${tutor.id}`}>
+              この先輩に依頼
+            </Link>
+          )}
         </div>
         <div className="card p-6 grid gap-3">
           <h1 className="text-2xl font-semibold text-ink">{tutor.name}</h1>
           <p className="text-sm text-sea/70">{tutor.university} {tutor.department} {tutor.year}</p>
           <div className="grid gap-1 text-sm text-sea/70">
             <p>現役時にAOで合格した学校: {tutor.acceptedUniversities.join(" / ")}</p>
-            <p>入っていた塾: {tutor.cramSchool}</p>
             <p>探究テーマ: {tutor.theme}</p>
             <p>指導経験: {tutor.experience}</p>
           </div>

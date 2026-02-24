@@ -1,183 +1,181 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getClient, getVisitorId } from "../../../lib/demoClient";
+import { getSupabaseClient } from "../../../lib/supabase/client";
+import DemoTopNav from "../../../components/DemoTopNav";
 
-const monthlySales = [
-  { month: "9月", value: 98000 },
-  { month: "10月", value: 124000 },
-  { month: "11月", value: 156000 },
-  { month: "12月", value: 173000 },
-  { month: "1月", value: 189000 }
-];
+type RequestRow = {
+  id: string;
+  title: string;
+  status: string;
+  budget: number;
+  requester_name: string | null;
+  tutor_id: string | null;
+  created_at: string;
+};
 
-const recentReviews = [
-  { id: "rv-1", name: "高3・文系", rating: 5, text: "志望理由書の流れが一気に整理できた。" },
-  { id: "rv-2", name: "高2・理系", rating: 4, text: "面接練習が実戦的で助かった。" },
-  { id: "rv-3", name: "高3・SFC", rating: 5, text: "探究テーマの深掘りがうまい。" }
-];
+const STATUS_LABEL: Record<string, string> = {
+  draft: "依頼確認中",
+  accepted: "支払い待ち",
+  escrow_pending: "支払い処理中",
+  escrowed: "相談実施中",
+  completed: "評価待ち/完了",
+  canceled: "キャンセル",
+  rejected: "却下"
+};
 
-const tasks = [
-  { id: "t1", title: "志望理由書の添削", status: "対応中", due: "2/10" },
-  { id: "t2", title: "面接練習 60分", status: "今日", due: "2/7" },
-  { id: "t3", title: "自己PRの構成", status: "未着手", due: "2/15" }
-];
+const STEPS = ["依頼", "依頼確認中", "支払い待ち", "支払い完了", "相談実施中", "評価待ち", "完了"] as const;
+
+function stepIndex(status: string) {
+  if (status === "draft") return 1;
+  if (status === "accepted" || status === "escrow_pending") return 2;
+  if (status === "escrowed") return 4;
+  if (status === "completed") return 6;
+  return 0;
+}
 
 export default function DemoRequestPage() {
-  const [request, setRequest] = useState<any>(null);
+  const [userId, setUserId] = useState("");
+  const [items, setItems] = useState<RequestRow[]>([]);
+  const [error, setError] = useState("");
+  const [loadingId, setLoadingId] = useState("");
+
+  const load = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const uid = sessionData.session?.user.id ?? "";
+    setUserId(uid);
+    if (!uid) return;
+    const { data, error: loadError } = await supabase
+      .from("requests_with_profile")
+      .select("id, title, status, budget, requester_name, tutor_id, created_at")
+      .or(`tutor_id.eq.${uid},tutor_id.is.null`)
+      .order("created_at", { ascending: false });
+    if (loadError) {
+      setError(loadError.message);
+      return;
+    }
+    setItems((data as RequestRow[]) ?? []);
+  };
 
   useEffect(() => {
-    const supabase = getClient();
-    if (!supabase) return;
-    const id = getVisitorId();
-    const load = async () => {
-      const { data } = await supabase
-        .from("demo_requests")
-        .select("*")
-        .eq("visitor_id", id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (data) setRequest(data);
-    };
     load();
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const channel = supabase
+      .channel("demo-tutor-requests")
+      .on("postgres_changes", { event: "*", schema: "public", table: "requests" }, () => {
+        load();
+      })
+      .subscribe();
+
+    const onVisible = () => {
+      if (!document.hidden) load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const acceptRequest = () => {
-    const run = async () => {
-      const supabase = getClient();
-      if (!supabase || !request) return;
-      const { data } = await supabase
-        .from("demo_requests")
-        .update({ status: "accepted" })
-        .eq("id", request.id)
-        .select("*")
-        .single();
-      if (data) setRequest(data);
-    };
-    run();
+  const decide = async (requestId: string, action: "approve" | "reject") => {
+    if (!userId) return;
+    setLoadingId(requestId);
+    setError("");
+    const res = await fetch(`/api/requests/${requestId}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tutorId: userId, action })
+    });
+    const data = await res.json().catch(() => ({}));
+    setLoadingId("");
+    if (!res.ok) {
+      setError(data.error ?? "更新に失敗しました");
+      return;
+    }
+    await load();
   };
 
-  const markPaid = () => {
-    const run = async () => {
-      const supabase = getClient();
-      if (!supabase || !request) return;
-      const chatId = request.chat_id || crypto.randomUUID();
-      const { data } = await supabase
-        .from("demo_requests")
-        .update({ status: "escrowed", chat_id: chatId })
-        .eq("id", request.id)
-        .select("*")
-        .single();
-      if (data) setRequest(data);
-    };
-    run();
-  };
+  const stats = useMemo(() => {
+    const pending = items.filter((x) => x.status === "draft").length;
+    const waitingPayment = items.filter((x) => x.status === "accepted" || x.status === "escrow_pending").length;
+    const active = items.filter((x) => x.status === "escrowed").length;
+    return { pending, waitingPayment, active };
+  }, [items]);
 
   return (
     <div className="grid gap-6">
+      <DemoTopNav active="status" />
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sea">Tutor Dashboard</p>
-          <h1 className="text-3xl font-display font-semibold text-ink">大学生 管理画面</h1>
-        </div>
-        <div className="flex gap-2">
-          <Link className="btn btn-secondary" href="/demo">高校生画面</Link>
-          <Link className="btn btn-secondary" href="/demo/admin">運営画面</Link>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sea">Tutor Transactions</p>
+          <h1 className="text-3xl font-display font-semibold text-ink">大学生 取引管理</h1>
+          <p className="text-sm text-sea/70 mt-1">高校生の申請状況ページとリアルタイム同期</p>
         </div>
       </header>
 
       <section className="grid gap-4 md:grid-cols-3">
         <div className="card p-5">
-          <p className="text-sm text-sea/60">今月の売上</p>
-          <p className="text-2xl font-semibold text-sea">¥189,000</p>
-          <p className="text-xs text-sea/60">前月比 +9%</p>
+          <p className="text-sm text-sea/60">承認待ち</p>
+          <p className="text-2xl font-semibold text-sea">{stats.pending}件</p>
         </div>
         <div className="card p-5">
-          <p className="text-sm text-sea/60">平均評価</p>
-          <p className="text-2xl font-semibold text-accent">★ 4.8</p>
-          <p className="text-xs text-sea/60">レビュー 42件</p>
+          <p className="text-sm text-sea/60">支払い待ち</p>
+          <p className="text-2xl font-semibold text-sea">{stats.waitingPayment}件</p>
         </div>
         <div className="card p-5">
-          <p className="text-sm text-sea/60">対応中の依頼</p>
-          <p className="text-2xl font-semibold text-sea">6件</p>
-          <p className="text-xs text-sea/60">今日締切 1件</p>
+          <p className="text-sm text-sea/60">相談実施中</p>
+          <p className="text-2xl font-semibold text-sea">{stats.active}件</p>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="card p-6 md:col-span-2 grid gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-sea">月別売上</h2>
-            <span className="text-sm text-sea/60">過去5ヶ月</span>
-          </div>
-          <div className="grid gap-3">
-            {monthlySales.map((item) => (
-              <div key={item.month} className="flex items-center gap-3">
-                <span className="w-10 text-sm text-sea/70">{item.month}</span>
-                <div className="h-2 flex-1 rounded-full bg-sand/60">
-                  <div
-                    className="h-2 rounded-full bg-sea"
-                    style={{ width: `${Math.min(item.value / 2000, 100)}%` }}
-                  />
-                </div>
-                <span className="w-20 text-right text-sm text-sea/70">¥{item.value.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {error && <p className="text-sm text-accent">{error}</p>}
 
-        <div className="card p-6 grid gap-3">
-          <h2 className="text-xl font-semibold text-sea">最近のレビュー</h2>
-          {recentReviews.map((review) => (
-            <div key={review.id} className="rounded-xl border border-sand bg-white/70 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-sea">{review.name}</p>
-                <span className="text-sm text-accent">★ {review.rating}</span>
-              </div>
-              <p className="mt-2 text-sm text-sea/80">{review.text}</p>
+      <section className="grid gap-3">
+        {items.map((item) => (
+          <div key={item.id} className="card p-5 grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold text-sea">{item.title}</p>
+              <span className="text-xs rounded-full bg-cloud px-3 py-1 text-sea">
+                {STATUS_LABEL[item.status] ?? item.status}
+              </span>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="card p-6 grid gap-4">
-          <h2 className="text-xl font-semibold text-sea">受注リクエスト</h2>
-          {request ? (
-            <div className="grid gap-2 text-sm text-sea/70">
-              <p>依頼タイトル: {request.title || "-"}</p>
-              <p>内容: {request.description || "-"}</p>
-              <p>予算: ¥{Number(request.budget ?? 0).toLocaleString()}</p>
-              <p>ステータス: {request.status}</p>
+            <p className="text-sm text-sea/75">依頼者: {item.requester_name ?? "-"} / 予算: ¥{item.budget.toLocaleString()}</p>
+            <p className="text-xs text-sea/60">{item.tutor_id ? "あなたに割当済み" : "未割当（承認で担当化）"}</p>
+            <div className="flex flex-wrap gap-1">
+              {STEPS.map((step, idx) => (
+                <span
+                  key={`${item.id}-${step}`}
+                  className={`text-[11px] px-2 py-1 rounded-full border ${
+                    idx <= stepIndex(item.status) ? "bg-sea text-white border-sea" : "bg-white text-sea/65 border-sand"
+                  }`}
+                >
+                  {step}
+                </span>
+              ))}
             </div>
-          ) : (
-            <p className="text-sm text-sea/70">依頼がまだありません。</p>
-          )}
-          <button className="btn btn-primary w-fit" onClick={acceptRequest} disabled={!request || request.status !== "draft"}>
-            受注する
-          </button>
-          <button className="btn btn-secondary w-fit" onClick={markPaid} disabled={!request || request.status !== "accepted"}>
-            支払い完了
-          </button>
-          <p className="text-xs text-sea/60">受注後は高校生側で支払いに進みます。</p>
-        </div>
-
-        <div className="card p-6 grid gap-4">
-          <h2 className="text-xl font-semibold text-sea">今日のタスク</h2>
-          <div className="grid gap-3">
-            {tasks.map((task) => (
-              <div key={task.id} className="rounded-xl border border-sand bg-white/70 p-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-sea">{task.title}</p>
-                  <span className="text-xs text-sea/60">{task.due}</span>
-                </div>
-                <p className="text-xs text-sea/60">{task.status}</p>
-              </div>
-            ))}
+            <div className="flex flex-wrap gap-2">
+              <Link className="btn btn-secondary" href={`/requests/${item.id}`}>
+                詳細
+              </Link>
+              {item.status === "draft" && (
+                <button className="btn btn-primary" onClick={() => decide(item.id, "approve")} disabled={loadingId === item.id}>
+                  承認
+                </button>
+              )}
+              {["draft", "accepted"].includes(item.status) && (
+                <button className="btn border border-sea text-sea" onClick={() => decide(item.id, "reject")} disabled={loadingId === item.id}>
+                  却下
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        ))}
+        {items.length === 0 && <p className="text-sm text-sea/70">表示できる申請はありません。</p>}
       </section>
     </div>
   );
