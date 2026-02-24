@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
@@ -38,7 +38,7 @@ function calcSuggestedPrice(topic: string, method: string, duration: string) {
   return Math.max(3000, (base[duration] ?? 5000) + topicBoost + methodBoost);
 }
 
-export default function RequestNewPage() {
+function RequestNewPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tutorId = searchParams.get("tutorId") ?? "";
@@ -262,5 +262,13 @@ export default function RequestNewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RequestNewPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-3xl card p-6 text-sm text-sea/70">読み込み中...</div>}>
+      <RequestNewPageContent />
+    </Suspense>
   );
 }
