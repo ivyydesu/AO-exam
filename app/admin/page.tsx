@@ -23,6 +23,8 @@ export default function AdminHomePage() {
       <div className="mt-6 grid gap-6 md:grid-cols-2">
         <AdminCard title="学生証審査" desc="大学生の学生証提出を確認し、承認・差し戻しを行います。" href="/admin/verifications" />
         <AdminCard title="通報管理" desc="ユーザー・取引・通話に関する通報を一覧確認し、対応状況を更新します。" href="/admin/reports" />
+        <AdminCard title="ユーザー管理" desc="アカウント停止、本人確認状況、利用状態を確認・制御します。" href="/admin/users" />
+        <AdminCard title="メッセージ審査" desc="メッセージ通報に絞って審査する管理導線です。" href="/admin/reports?reportType=message" />
       </div>
     </div>
   );

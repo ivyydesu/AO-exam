@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     }
 
     const status = req.nextUrl.searchParams.get("status");
+    const reportType = req.nextUrl.searchParams.get("reportType");
 
     let query = supabaseAdmin
       .from("reports")
@@ -26,6 +27,9 @@ export async function GET(req: NextRequest) {
 
     if (status && ["open", "reviewing", "resolved", "dismissed"].includes(status)) {
       query = query.eq("status", status);
+    }
+    if (reportType && ["user", "request", "message", "call", "other"].includes(reportType)) {
+      query = query.eq("report_type", reportType);
     }
 
     const { data, error } = await query;

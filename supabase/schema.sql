@@ -12,6 +12,13 @@ create table if not exists profiles (
   created_at timestamptz default now()
 );
 
+alter table profiles
+add column if not exists is_suspended boolean not null default false;
+alter table profiles
+add column if not exists suspended_until timestamptz;
+alter table profiles
+add column if not exists suspended_reason text;
+
 -- LINE connection states (short-lived, for OAuth CSRF protection)
 create table if not exists line_link_states (
   state text primary key,
@@ -32,6 +39,15 @@ create table if not exists tutor_verifications (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table tutor_verifications
+add column if not exists student_id_front_image_path text;
+alter table tutor_verifications
+add column if not exists student_id_back_image_path text;
+alter table tutor_verifications
+add column if not exists admission_year integer;
+alter table tutor_verifications
+add column if not exists graduation_year integer;
 
 -- Public tutor profile for search and listing
 create table if not exists tutor_profiles (
@@ -169,7 +185,18 @@ create table if not exists reports (
 );
 
 -- Realtime (for chat)
-alter publication supabase_realtime add table messages;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table messages;
+  end if;
+end $$;
 
 -- View for request list
 create or replace view requests_with_profile as

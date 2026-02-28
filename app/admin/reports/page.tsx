@@ -35,12 +35,13 @@ function statusChip(status: ReportItem["status"]) {
 export default function AdminReportsPage() {
   const [items, setItems] = useState<ReportItem[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string>("");
   const [adminNote, setAdminNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = async (status = selectedStatus) => {
+  const load = async (status = selectedStatus, type = selectedType) => {
     setLoading(true);
     setError("");
     try {
@@ -49,7 +50,10 @@ export default function AdminReportsPage() {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) throw new Error("ログインが必要です");
 
-      const query = status !== "all" ? `?status=${status}` : "";
+      const params = new URLSearchParams();
+      if (status !== "all") params.set("status", status);
+      if (type !== "all") params.set("reportType", type);
+      const query = params.toString() ? `?${params.toString()}` : "";
       const res = await fetch(`/api/admin/reports/list${query}`, {
         headers: { Authorization: `Bearer ${sessionData.session.access_token}` }
       });
@@ -64,7 +68,14 @@ export default function AdminReportsPage() {
   };
 
   useEffect(() => {
-    void load("all");
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("status");
+    const reportType = params.get("reportType");
+    const nextStatus = status && ["open", "reviewing", "resolved", "dismissed"].includes(status) ? status : "all";
+    const nextType = reportType && ["user", "request", "message", "call", "other"].includes(reportType) ? reportType : "all";
+    setSelectedStatus(nextStatus);
+    setSelectedType(nextType);
+    void load(nextStatus, nextType);
   }, []);
 
   const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? items[0] ?? null, [items, selectedId]);
@@ -98,7 +109,7 @@ export default function AdminReportsPage() {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error ?? "更新に失敗しました");
-      await load(selectedStatus);
+      await load(selectedStatus, selectedType);
     } catch (e) {
       setError(e instanceof Error ? e.message : "更新に失敗しました");
     }
@@ -117,7 +128,7 @@ export default function AdminReportsPage() {
               value={selectedStatus}
               onChange={(e) => {
                 setSelectedStatus(e.target.value);
-                void load(e.target.value);
+                void load(e.target.value, selectedType);
               }}
               className="rounded-xl border border-[#E5E7EB] px-4 py-2.5 text-sm"
             >
@@ -126,6 +137,21 @@ export default function AdminReportsPage() {
               <option value="reviewing">確認中</option>
               <option value="resolved">解決済み</option>
               <option value="dismissed">却下</option>
+            </select>
+            <select
+              value={selectedType}
+              onChange={(e) => {
+                setSelectedType(e.target.value);
+                void load(selectedStatus, e.target.value);
+              }}
+              className="rounded-xl border border-[#E5E7EB] px-4 py-2.5 text-sm"
+            >
+              <option value="all">すべての種別</option>
+              <option value="message">メッセージ審査</option>
+              <option value="user">ユーザー</option>
+              <option value="request">依頼</option>
+              <option value="call">通話</option>
+              <option value="other">その他</option>
             </select>
             <Link href="/admin" className="rounded-xl border border-[#E5E7EB] px-4 py-2.5 text-sm font-medium text-[#374151] hover:bg-[#F9FAFB]">
               管理トップへ

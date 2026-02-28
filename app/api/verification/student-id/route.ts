@@ -33,14 +33,14 @@ export async function GET(req: NextRequest) {
     const user = await requireUserFromBearerToken(req);
     const supabaseAdmin = getSupabaseAdmin();
 
-    const { data, error } = await supabaseAdmin
+    const primary = await supabaseAdmin
       .from("tutor_verifications")
-      .select("id, status, reason, student_id_image_path, reviewed_at, created_at")
+      .select("id, status, reason, student_id_front_image_path, student_id_back_image_path, admission_year, graduation_year, reviewed_at, created_at")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (error) {
-      if (isMissingVerificationTable(error.message)) {
+    if (primary.error) {
+      if (isMissingVerificationTable(primary.error.message)) {
         return NextResponse.json(
           {
             error:
@@ -49,10 +49,29 @@ export async function GET(req: NextRequest) {
           { status: 503 }
         );
       }
-      return NextResponse.json({ error: error.message }, { status: 400 });
+
+      const fallback = await supabaseAdmin
+        .from("tutor_verifications")
+        .select("id, status, reason, student_id_image_path, reviewed_at, created_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (fallback.error) {
+        return NextResponse.json({ error: fallback.error.message }, { status: 400 });
+      }
+      return NextResponse.json({
+        verification: fallback.data
+          ? {
+              ...fallback.data,
+              student_id_front_image_path: fallback.data.student_id_image_path,
+              student_id_back_image_path: null,
+              admission_year: null,
+              graduation_year: null
+            }
+          : null
+      });
     }
 
-    return NextResponse.json({ verification: data });
+    return NextResponse.json({ verification: primary.data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
     return NextResponse.json({ error: message }, { status: 401 });
@@ -78,27 +97,41 @@ export async function POST(req: NextRequest) {
     }
 
     const form = await req.formData();
-    const file = form.get("studentIdImage");
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: "studentIdImage is required" }, { status: 400 });
+    const frontFile = form.get("studentIdImageFront");
+    const backFile = form.get("studentIdImageBack");
+    const admissionYear = String(form.get("admissionYear") ?? "").trim();
+    const graduationYear = String(form.get("graduationYear") ?? "").trim();
+    if (!(frontFile instanceof File) || !(backFile instanceof File)) {
+      return NextResponse.json({ error: "学生証の表・裏画像が必要です" }, { status: 400 });
     }
 
     const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
+    if (!allowed.includes(frontFile.type) || !allowed.includes(backFile.type)) {
       return NextResponse.json({ error: "Only jpeg/png/webp are allowed" }, { status: 400 });
     }
+    if (!/^\d{4}$/.test(admissionYear) || !/^\d{4}$/.test(graduationYear)) {
+      return NextResponse.json({ error: "入学年度・卒業予定年度は4桁の西暦で入力してください" }, { status: 400 });
+    }
+    if (Number(graduationYear) < Number(admissionYear)) {
+      return NextResponse.json({ error: "卒業予定年度は入学年度以降にしてください" }, { status: 400 });
+    }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-    const path = `${user.id}/${Date.now()}-student-id.${extension}`;
+    const frontBytes = await frontFile.arrayBuffer();
+    const backBytes = await backFile.arrayBuffer();
+    const frontBuffer = Buffer.from(frontBytes);
+    const backBuffer = Buffer.from(backBytes);
+    const frontExtension = frontFile.type === "image/png" ? "png" : frontFile.type === "image/webp" ? "webp" : "jpg";
+    const backExtension = backFile.type === "image/png" ? "png" : backFile.type === "image/webp" ? "webp" : "jpg";
+    const base = `${user.id}/${Date.now()}`;
+    const frontPath = `${base}-student-id-front.${frontExtension}`;
+    const backPath = `${base}-student-id-back.${backExtension}`;
 
     await ensureStudentIdsBucket();
 
     const { error: uploadError } = await supabaseAdmin.storage
       .from("student-ids")
-      .upload(path, buffer, {
-        contentType: file.type,
+      .upload(frontPath, frontBuffer, {
+        contentType: frontFile.type,
         upsert: false
       });
 
@@ -106,12 +139,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: uploadError.message }, { status: 400 });
     }
 
+    const { error: backUploadError } = await supabaseAdmin.storage
+      .from("student-ids")
+      .upload(backPath, backBuffer, {
+        contentType: backFile.type,
+        upsert: false
+      });
+
+    if (backUploadError) {
+      return NextResponse.json({ error: backUploadError.message }, { status: 400 });
+    }
+
     const { error: upsertError } = await supabaseAdmin
       .from("tutor_verifications")
       .upsert(
         {
           user_id: user.id,
-          student_id_image_path: path,
+          student_id_image_path: frontPath,
+          student_id_front_image_path: frontPath,
+          student_id_back_image_path: backPath,
+          admission_year: Number(admissionYear),
+          graduation_year: Number(graduationYear),
           status: "pending",
           reason: null,
           reviewed_by: null,

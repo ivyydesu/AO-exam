@@ -25,13 +25,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
-    const { data, error } = await supabaseAdmin
+    const primary = await supabaseAdmin
       .from("tutor_verifications")
-      .select("id, user_id, status, reason, student_id_image_path, reviewed_at, created_at")
+      .select("id, user_id, status, reason, student_id_front_image_path, student_id_back_image_path, admission_year, graduation_year, reviewed_at, created_at")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      if (isMissingVerificationTable(error.message)) {
+    if (primary.error) {
+      if (isMissingVerificationTable(primary.error.message)) {
         return NextResponse.json(
           {
             error:
@@ -40,10 +40,47 @@ export async function GET(req: NextRequest) {
           { status: 503 }
         );
       }
-      return NextResponse.json({ error: error.message }, { status: 400 });
+
+      const fallback = await supabaseAdmin
+        .from("tutor_verifications")
+        .select("id, user_id, status, reason, student_id_image_path, reviewed_at, created_at")
+        .order("created_at", { ascending: false });
+      if (fallback.error) {
+        return NextResponse.json({ error: fallback.error.message }, { status: 400 });
+      }
+      const fallbackData = (fallback.data ?? []).map((row) => ({
+        ...row,
+        student_id_front_image_path: row.student_id_image_path,
+        student_id_back_image_path: null,
+        admission_year: null,
+        graduation_year: null
+      }));
+      return await buildResponse(fallbackData, supabaseAdmin);
     }
 
-    const userIds = [...new Set((data ?? []).map((row) => row.user_id))];
+    return await buildResponse(primary.data ?? [], supabaseAdmin);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unauthorized";
+    return NextResponse.json({ error: message }, { status: 401 });
+  }
+}
+
+async function buildResponse(
+  rowsInput: Array<{
+    id: string;
+    user_id: string;
+    status: string;
+    reason: string | null;
+    student_id_front_image_path: string | null;
+    student_id_back_image_path: string | null;
+    admission_year: number | null;
+    graduation_year: number | null;
+    reviewed_at: string | null;
+    created_at: string;
+  }>,
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>
+) {
+    const userIds = [...new Set(rowsInput.map((row) => row.user_id))];
     let nameMap: Record<string, string> = {};
     if (userIds.length > 0) {
       const { data: profiles } = await supabaseAdmin
@@ -54,21 +91,27 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await Promise.all(
-      (data ?? []).map(async (row) => {
-        const { data: signed } = await supabaseAdmin.storage
-          .from("student-ids")
-          .createSignedUrl(row.student_id_image_path, 60 * 10);
+      rowsInput.map(async (row) => {
+        const [{ data: signedFront }, { data: signedBack }] = await Promise.all([
+          row.student_id_front_image_path
+            ? supabaseAdmin.storage
+                .from("student-ids")
+                .createSignedUrl(row.student_id_front_image_path, 60 * 10)
+            : Promise.resolve({ data: null, error: null }),
+          row.student_id_back_image_path
+            ? supabaseAdmin.storage
+                .from("student-ids")
+                .createSignedUrl(row.student_id_back_image_path, 60 * 10)
+            : Promise.resolve({ data: null, error: null })
+        ]);
         return {
           ...row,
           full_name: nameMap[row.user_id] ?? "Unknown User",
-          image_url: signed?.signedUrl ?? null
+          front_image_url: signedFront?.signedUrl ?? null,
+          back_image_url: signedBack?.signedUrl ?? null
         };
       })
     );
 
     return NextResponse.json({ items: rows });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: 401 });
-  }
 }

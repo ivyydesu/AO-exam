@@ -32,6 +32,13 @@ type TutorForm = {
   is_published: boolean;
 };
 
+type VerificationStatus = {
+  status: "pending" | "approved" | "rejected" | null;
+  reason: string | null;
+  admission_year: number | null;
+  graduation_year: number | null;
+};
+
 const initialForm: TutorForm = {
   full_name: "",
   school: "",
@@ -59,6 +66,12 @@ export default function ProfileSettingsPage() {
 
   const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [draftSettings, setDraftSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
+  const [verification, setVerification] = useState<VerificationStatus>({
+    status: null,
+    reason: null,
+    admission_year: null,
+    graduation_year: null
+  });
 
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPublish, setLoadingPublish] = useState(false);
@@ -109,9 +122,10 @@ export default function ProfileSettingsPage() {
         setEmail(sessionData.session.user.email ?? "");
 
         const token = sessionData.session.access_token;
-        const [profileRes, settingsRes] = await Promise.all([
+        const [profileRes, settingsRes, verificationRes] = await Promise.all([
           fetch("/api/profile/tutor", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("/api/profile/notification-settings", { headers: { Authorization: `Bearer ${token}` } })
+          fetch("/api/profile/notification-settings", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/verification/student-id", { headers: { Authorization: `Bearer ${token}` } })
         ]);
 
         const profilePayload = await profileRes.json().catch(() => ({}));
@@ -125,6 +139,16 @@ export default function ProfileSettingsPage() {
           setSettings(next);
           setDraftSettings(next);
           setTwoFactorEnabled(Boolean(next.email_2fa_enabled));
+        }
+
+        const verificationPayload = await verificationRes.json().catch(() => ({}));
+        if (verificationRes.ok && verificationPayload.verification) {
+          setVerification({
+            status: verificationPayload.verification.status ?? null,
+            reason: verificationPayload.verification.reason ?? null,
+            admission_year: verificationPayload.verification.admission_year ?? null,
+            graduation_year: verificationPayload.verification.graduation_year ?? null
+          });
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "読み込みに失敗しました");
@@ -548,18 +572,7 @@ export default function ProfileSettingsPage() {
             </button>
           </nav>
 
-          <div className="border-t border-[#E5E7EB] p-3">
-            <Link href="/profile" className="flex w-full items-center rounded-lg p-2 hover:bg-[#F9FAFB]">
-              <div className="h-8 w-8 overflow-hidden rounded-full bg-gradient-to-tr from-purple-400 to-blue-500">
-                {avatarPreview ? <img src={avatarPreview} alt="avatar" className="h-full w-full object-cover" /> : null}
-              </div>
-              <div className="ml-3 hidden text-left lg:block">
-                <p className="text-sm font-medium text-[#111827]">{form.full_name || "Kotaro"}</p>
-                <p className="text-xs text-[#6B7280]">プロフィールを見る</p>
-              </div>
-              <span className="ml-auto hidden text-sm text-[#6B7280] lg:block"><ChevronDownIcon /></span>
-            </Link>
-          </div>
+          <div className="border-t border-[#E5E7EB] p-3" />
         </div>
       </aside>
 
@@ -595,8 +608,9 @@ export default function ProfileSettingsPage() {
                 <h2 className="text-xl font-semibold text-[#111827]">アカウント設定メニュー</h2>
                 <p className="mt-2 text-sm text-[#6B7280]">プロフィール設定・通知設定・ログイン設定に移動できます。</p>
               </div>
-              <div className="divide-y divide-[#E5E7EB]">
+                <div className="divide-y divide-[#E5E7EB]">
                 <ManageListRow title="プロフィール設定" desc="公開プロフィール、写真、基本情報を編集します。" onClick={() => setTabAndQuery("profile")} />
+                <ManageListRow title="学生証認証" desc="学生証の表裏と入学/卒業予定年度を提出します。" onClick={() => router.push("/verification/student-id")} />
                 <ManageListRow title="通知設定" desc="メール通知、LINE通知、通知の受け取り方を管理します。" onClick={() => setTabAndQuery("notifications")} />
                 <ManageListRow title="ログイン設定" desc="メールアドレス変更、パスワード変更、2要素認証を管理します。" onClick={() => setTabAndQuery("login")} />
               </div>
@@ -722,7 +736,26 @@ export default function ProfileSettingsPage() {
                 </div>
 
                 <div className="mt-8 flex justify-end gap-3">
-                  <Link href="/dashboard" className="rounded-lg border border-transparent px-6 py-2.5 text-sm font-medium text-[#6B7280] hover:border-[#E5E7EB] hover:bg-[#F9FAFB]">
+                  <div className="mr-auto rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-xs text-[#6B7280]">
+                    <p className="font-semibold text-[#111827]">学生証認証</p>
+                    <p className="mt-1">
+                      {verification.status === "approved"
+                        ? "承認済み（プロフィール公開可能）"
+                        : verification.status === "pending"
+                          ? "審査中（公開は承認後）"
+                          : verification.status === "rejected"
+                            ? "差し戻し（再提出してください）"
+                            : "未提出（公開には提出が必要）"}
+                    </p>
+                    {verification.admission_year && verification.graduation_year ? (
+                      <p className="mt-1">入学 {verification.admission_year} / 卒業予定 {verification.graduation_year}</p>
+                    ) : null}
+                    {verification.reason ? <p className="mt-1 text-[#B91C1C]">理由: {verification.reason}</p> : null}
+                    <Link href="/verification/student-id" className="mt-2 inline-block font-semibold text-[#10B981] hover:underline">
+                      学生証認証ページを開く
+                    </Link>
+                  </div>
+                  <Link href="/profile/settings?tab=manage" className="rounded-lg border border-transparent px-6 py-2.5 text-sm font-medium text-[#6B7280] hover:border-[#E5E7EB] hover:bg-[#F9FAFB]">
                     キャンセル
                   </Link>
                   <button
