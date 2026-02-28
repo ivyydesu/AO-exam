@@ -15,5 +15,20 @@ export async function requireUserFromBearerToken(req: NextRequest) {
     throw new Error("Invalid user token");
   }
 
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select("id, is_suspended, suspended_until")
+    .eq("id", data.user.id)
+    .maybeSingle();
+
+  if (
+    !profileError &&
+    profile &&
+    profile.is_suspended &&
+    (!profile.suspended_until || new Date(profile.suspended_until).getTime() > Date.now())
+  ) {
+    throw new Error("Account suspended");
+  }
+
   return data.user;
 }

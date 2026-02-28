@@ -30,10 +30,32 @@ export async function POST(req: Request) {
 
     if (requestId && paymentIntentId) {
       const supabaseAdmin = getSupabaseAdmin();
+      const { data: requestForChat } = await supabaseAdmin
+        .from("requests")
+        .select("id, title, requester_id, tutor_id")
+        .eq("id", requestId)
+        .maybeSingle();
+
       await supabaseAdmin
         .from("requests")
         .update({ status: "escrowed", stripe_payment_intent_id: paymentIntentId })
         .eq("id", requestId);
+
+      if (requestForChat?.requester_id && requestForChat?.tutor_id) {
+        const { count } = await supabaseAdmin
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("request_id", requestForChat.id);
+
+        if (!count || count === 0) {
+          const starterSender = requestForChat.tutor_id ?? requestForChat.requester_id;
+          await supabaseAdmin.from("messages").insert({
+            request_id: requestForChat.id,
+            sender_id: starterSender,
+            content: "【AO Match】支払いが完了しました。ここからチャットで相談を開始できます。"
+          });
+        }
+      }
     }
   }
 

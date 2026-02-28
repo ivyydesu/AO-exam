@@ -18,6 +18,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Only tutor can publish profile" }, { status: 403 });
     }
 
+    if (publish) {
+      const { data: verification } = await supabaseAdmin
+        .from("tutor_verifications")
+        .select("status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (verification?.status !== "approved") {
+        return NextResponse.json(
+          { error: "学生証認証が未承認です。承認後にプロフィール公開できます。" },
+          { status: 403 }
+        );
+      }
+    }
+
     let { error } = await supabaseAdmin
       .from("tutor_profiles")
       .upsert(

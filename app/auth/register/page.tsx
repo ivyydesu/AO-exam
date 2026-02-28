@@ -4,7 +4,6 @@ import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
-import AuthDevTools from "../../../components/AuthDevTools";
 import { normalizeAuthErrorMessage } from "../../../lib/auth/emailThrottle";
 
 const roles = [
@@ -77,15 +76,15 @@ function RegisterPageContent() {
       <div className="overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="grid md:grid-cols-[42%_58%]">
           <section className="relative isolate min-h-[260px] overflow-hidden bg-gradient-to-b from-[#0E4FA8] to-[#1C82F2] p-8 text-white">
-            <div className="relative z-10">
+            <div className="relative z-10 max-w-[320px] pr-10">
               <p className="text-sm opacity-90">Welcome to</p>
               <h1 className="mt-2 text-3xl font-semibold">AO Match</h1>
               <p className="mt-5 text-sm opacity-90">
               AO入試の先輩マッチング。高校生と大学生をつなぐアカウントを作成します。
               </p>
             </div>
-            <div className="pointer-events-none absolute right-0 top-0 z-0 h-full w-16 bg-white/55 blur-[2px]" />
-            <div className="pointer-events-none absolute -right-5 top-0 z-0 h-full w-12 bg-white/35 blur-[1px]" />
+            <div className="pointer-events-none absolute -right-2 top-0 z-0 h-full w-12 bg-white/40 blur-[2px]" />
+            <div className="pointer-events-none absolute -right-8 top-0 z-0 h-full w-8 bg-white/25 blur-[1px]" />
           </section>
 
           <section className="p-8">
@@ -127,7 +126,6 @@ function RegisterPageContent() {
                 </Link>
               </div>
             </form>
-            <AuthDevTools />
           </section>
         </div>
       </div>

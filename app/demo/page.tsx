@@ -436,7 +436,7 @@ export default function DemoPage() {
             <div>
               <h4 className="mb-4 font-bold text-gray-900">運営</h4>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li><a className="hover:text-[#10b981]" href="/dashboard">会社概要</a></li>
+                <li><a className="hover:text-[#10b981]" href="/guide">会社概要</a></li>
                 <li><a className="hover:text-[#10b981]" href="/privacy">プライバシーポリシー</a></li>
               </ul>
             </div>

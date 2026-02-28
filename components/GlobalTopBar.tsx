@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import BrandLogo from "./BrandLogo";
 import { getSupabaseClient } from "../lib/supabase/client";
 
@@ -11,6 +12,7 @@ type ProfileState = {
   roleLabel: string;
   avatarUrl: string;
   role: "student" | "tutor" | "admin";
+  isGuest: boolean;
 };
 
 function BellIcon() {
@@ -34,38 +36,84 @@ export default function GlobalTopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [profile, setProfile] = useState<ProfileState>({
-    name: "山田 太郎",
-    roleLabel: "高校生",
+    name: "ログインしてください",
+    roleLabel: "ゲスト",
     avatarUrl: "",
-    role: "student"
+    role: "student",
+    isGuest: true
   });
 
   useEffect(() => {
-    const load = async () => {
+    const setGuest = () => {
+      setProfile({
+        name: "ログインしてください",
+        roleLabel: "ゲスト",
+        avatarUrl: "",
+        role: "student",
+        isGuest: true
+      });
+    };
+
+    const load = async (session?: Session | null) => {
       const supabase = getSupabaseClient();
       if (!supabase) return;
-      const { data: sessionData } = await supabase.auth.getSession();
-      const uid = sessionData.session?.user.id;
-      if (!uid) return;
+      const currentSession =
+        session !== undefined
+          ? session
+          : (await supabase.auth.getSession()).data.session;
 
-      const [{ data: baseProfile }, { data: tutorProfile }] = await Promise.all([
+      const uid = currentSession?.user.id;
+      if (!uid) {
+        setGuest();
+        return;
+      }
+
+      const fallbackName =
+        (currentSession?.user.user_metadata?.full_name as string | undefined) ||
+        (currentSession?.user.email?.split("@")[0] ?? "ユーザー");
+      const fallbackRole = (currentSession?.user.user_metadata?.role as "student" | "tutor" | "admin" | undefined) ?? "student";
+
+      const [{ data: baseProfile, error: baseError }, { data: tutorProfile }] = await Promise.all([
         supabase.from("profiles").select("full_name, role").eq("id", uid).maybeSingle(),
         supabase.from("tutor_profiles").select("avatar_url").eq("user_id", uid).maybeSingle()
       ]);
 
+      if (baseError) {
+        setProfile({
+          name: fallbackName,
+          roleLabel: fallbackRole === "tutor" ? "大学生" : fallbackRole === "admin" ? "運営" : "高校生",
+          avatarUrl: tutorProfile?.avatar_url || "",
+          role: fallbackRole,
+          isGuest: false
+        });
+        return;
+      }
+
       setProfile({
-        name: baseProfile?.full_name || "ユーザー",
+        name: baseProfile?.full_name || fallbackName,
         roleLabel: baseProfile?.role === "tutor" ? "大学生" : baseProfile?.role === "admin" ? "運営" : "高校生",
         avatarUrl: tutorProfile?.avatar_url || "",
-        role: (baseProfile?.role as "student" | "tutor" | "admin") || "student"
+        role: (baseProfile?.role as "student" | "tutor" | "admin") || fallbackRole,
+        isGuest: false
       });
     };
-    load();
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    load().catch(setGuest);
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      void load(session).catch(setGuest);
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const links = useMemo(
     () => [
-      { href: "/dashboard", label: "ダッシュボード", active: pathname === "/dashboard" },
       { href: "/search", label: "先輩を探す", active: pathname.startsWith("/search") || pathname.startsWith("/service/") },
       { href: "/guide", label: "AO Matchについて", active: pathname.startsWith("/guide") }
     ],
@@ -85,6 +133,10 @@ export default function GlobalTopBar() {
     { title: "メッセージを受信しました", detail: "進行中のやり取りがあります", href: "/chat" },
     { title: "申請状況が更新されました", detail: "最新ステータスを確認できます", href: "/status" }
   ];
+
+  if (pathname?.startsWith("/auth/")) {
+    return null;
+  }
 
   return (
     <header className="relative z-40 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
@@ -159,7 +211,7 @@ export default function GlobalTopBar() {
                 {profile.avatarUrl ? (
                   <img src={profile.avatarUrl} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="grid h-full w-full place-items-center text-sm text-[#6B7280]">👤</div>
+                  <div className="grid h-full w-full place-items-center text-sm font-semibold text-[#10B981]">AO</div>
                 )}
               </div>
             </button>
@@ -167,24 +219,33 @@ export default function GlobalTopBar() {
             <div className={`${menuOpen ? "block" : "hidden"} absolute right-0 top-full z-50 w-56 pt-3`}>
               <div className="rounded-2xl border border-[#E5E7EB] bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
                 <Link
-                  href="/profile/settings?tab=manage"
+                  href={profile.isGuest ? "/auth/login" : "/profile/settings?tab=manage"}
                   className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
                 >
                   アカウント設定
                 </Link>
                 <Link
-                  href={profile.role === "admin" ? "/admin" : "/profile/management"}
+                  href={profile.isGuest ? "/auth/login" : profile.role === "admin" ? "/admin" : "/profile/management"}
                   className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
                 >
                   管理ページ
                 </Link>
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="block w-full rounded-xl px-4 py-3.5 text-left text-[15px] font-medium text-[#374151] transition hover:bg-[#FEF2F2] hover:text-[#DC2626]"
-                >
-                  ログアウト
-                </button>
+                {profile.isGuest ? (
+                  <Link
+                    href="/auth/login"
+                    className="block w-full rounded-xl px-4 py-3.5 text-left text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
+                  >
+                    ログイン
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="block w-full rounded-xl px-4 py-3.5 text-left text-[15px] font-medium text-[#374151] transition hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+                  >
+                    ログアウト
+                  </button>
+                )}
               </div>
             </div>
           </div>

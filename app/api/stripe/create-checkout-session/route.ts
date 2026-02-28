@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     metadata: {
       request_id: request.id
     },
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/requests/${request.id}?paid=1`,
+    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/chat?requestId=${request.id}&paid=1`,
     cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/requests/${request.id}?canceled=1`
   });
 

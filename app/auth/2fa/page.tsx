@@ -26,7 +26,7 @@ function TwoFactorPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  const landingPath = useMemo(() => (role === "tutor" ? "/demo" : "/dashboard"), [role]);
+  const landingPath = useMemo(() => (role === "tutor" || role === "student" ? "/demo" : "/admin"), [role]);
 
   useEffect(() => {
     setResendCooldown(getCooldownRemaining("login-2fa", email));
@@ -133,27 +133,28 @@ function TwoFactorPageContent() {
     <div className="mx-auto max-w-5xl">
       <div className="overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="grid md:grid-cols-[42%_58%]">
-          <section className="relative isolate min-h-[300px] overflow-hidden bg-gradient-to-b from-[#0E4FA8] to-[#1C82F2] p-8 text-white">
-            <div className="relative z-10">
-              <p className="text-sm opacity-90">Security Check</p>
-              <h1 className="mt-2 text-3xl font-semibold">2段階認証</h1>
+          <section className="relative isolate min-h-[260px] overflow-hidden bg-gradient-to-b from-[#0E4FA8] to-[#1C82F2] p-8 text-white">
+            <div className="relative z-10 max-w-[320px] pr-10">
+              <p className="text-sm opacity-90">Welcome to</p>
+              <h1 className="mt-2 text-3xl font-semibold">AO Match</h1>
               <p className="mt-5 text-sm opacity-90">
-                ログインを完了するために、{email || "登録メールアドレス"} に送信された認証コードを入力してください。
+                セキュリティ確認のため、{email || "登録メールアドレス"} に送信された認証コードを入力してください。
               </p>
             </div>
-            <div className="pointer-events-none absolute right-0 top-0 z-0 h-full w-16 bg-white/55 blur-[2px]" />
-            <div className="pointer-events-none absolute -right-5 top-0 z-0 h-full w-12 bg-white/35 blur-[1px]" />
+            <div className="pointer-events-none absolute -right-2 top-0 z-0 h-full w-12 bg-white/40 blur-[2px]" />
+            <div className="pointer-events-none absolute -right-8 top-0 z-0 h-full w-8 bg-white/25 blur-[1px]" />
           </section>
 
           <section className="p-8">
-            <h2 className="text-2xl font-semibold text-ink">Verify login</h2>
-            <p className="mt-2 text-sm text-sea/80">メール本文をそのまま貼り付けても認識します。</p>
+            <h2 className="text-5xl font-bold tracking-tight text-slate-900">Sign in</h2>
+            <p className="mt-3 text-base font-semibold text-slate-600">2FA (Email OTP)</p>
+            <p className="mt-2 text-sm text-slate-500">メール本文をそのまま貼り付けても認識します。</p>
 
             <form className="mt-6 grid gap-4" onSubmit={verify}>
               <label className="grid gap-2">
-                <span className="label">認証コード</span>
+                <span className="text-sm font-semibold text-slate-700">認証コード</span>
                 <input
-                  className="input"
+                  className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition placeholder:text-slate-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
                   value={code}
                   onChange={(e) => setCode(normalizeOtp(e.target.value))}
                   onPaste={handlePasteOtp}
@@ -164,26 +165,31 @@ function TwoFactorPageContent() {
                 />
               </label>
 
-              <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
-                <p className="text-xs text-sea/70">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-500">
                   コードが届かない場合は再送してください。迷惑メールも確認してください。
                 </p>
               </div>
 
-              {error ? <p className="text-sm text-accent">{error}</p> : null}
-              {notice ? <p className="text-sm text-sea">{notice}</p> : null}
+              {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
+              {notice ? <p className="text-sm font-medium text-emerald-600">{notice}</p> : null}
 
               <div className="flex gap-3">
-                <button className="btn btn-primary" disabled={loading}>
+                <button className="rounded-full bg-emerald-500 px-7 py-3 text-xl font-bold text-white transition hover:bg-emerald-600 disabled:opacity-60" disabled={loading}>
                   {loading ? "確認中..." : "確認してログイン"}
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={resend} disabled={loading || resendCooldown > 0}>
+                <button
+                  type="button"
+                  className="rounded-full border border-emerald-500 px-7 py-3 text-xl font-bold text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-60"
+                  onClick={resend}
+                  disabled={loading || resendCooldown > 0}
+                >
                   {resendCooldown > 0 ? `再送まで${resendCooldown}s` : "コード再送"}
                 </button>
               </div>
 
               <div className="pt-2">
-                <Link href={`/auth/login?role=${role}&email=${encodeURIComponent(email)}`} className="text-sm text-[#10B981] underline-offset-2 hover:underline">
+                <Link href={`/auth/login?role=${role}&email=${encodeURIComponent(email)}`} className="text-sm font-semibold text-emerald-600 hover:underline">
                   ログイン画面に戻る
                 </Link>
               </div>

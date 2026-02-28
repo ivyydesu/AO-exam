@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     if (!resolvedPaymentIntentId && resolvedRequestId) {
       const { data: requestRow, error } = await supabaseAdmin
         .from("requests")
-        .select("id, status, stripe_payment_intent_id, stripe_checkout_session_id")
+        .select("id, status, requester_id, tutor_id, stripe_payment_intent_id, stripe_checkout_session_id")
         .eq("id", resolvedRequestId)
         .single();
 
@@ -38,14 +38,17 @@ export async function POST(req: NextRequest) {
     }
 
     const paymentIntent = await stripe.paymentIntents.retrieve(resolvedPaymentIntentId);
-    if (paymentIntent.status !== "requires_capture") {
+    if (!["requires_capture", "succeeded"].includes(paymentIntent.status)) {
       return NextResponse.json(
         { error: `PaymentIntent is not capturable. Current status: ${paymentIntent.status}` },
         { status: 400 }
       );
     }
 
-    const captured = await stripe.paymentIntents.capture(resolvedPaymentIntentId);
+    const captured =
+      paymentIntent.status === "succeeded"
+        ? paymentIntent
+        : await stripe.paymentIntents.capture(resolvedPaymentIntentId);
 
     if (!resolvedRequestId) {
       resolvedRequestId =
@@ -55,10 +58,32 @@ export async function POST(req: NextRequest) {
     }
 
     if (resolvedRequestId) {
+      const { data: requestForChat } = await supabaseAdmin
+        .from("requests")
+        .select("id, title, requester_id, tutor_id")
+        .eq("id", resolvedRequestId)
+        .maybeSingle();
+
       await supabaseAdmin
         .from("requests")
-        .update({ status: "completed" })
+        .update({ status: "completed", stripe_payment_intent_id: captured.id })
         .eq("id", resolvedRequestId);
+
+      if (requestForChat?.requester_id && requestForChat?.tutor_id) {
+        const { count } = await supabaseAdmin
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("request_id", requestForChat.id);
+
+        if (!count || count === 0) {
+          const starterSender = requestForChat.tutor_id ?? requestForChat.requester_id;
+          await supabaseAdmin.from("messages").insert({
+            request_id: requestForChat.id,
+            sender_id: starterSender,
+            content: `【AO Match】支払いが完了しました。ここからチャットで相談を開始できます。`
+          });
+        }
+      }
     }
 
     return NextResponse.json({

@@ -8,13 +8,18 @@ type Verification = {
   id: string;
   status: "pending" | "approved" | "rejected";
   reason: string | null;
+  admission_year: number | null;
+  graduation_year: number | null;
   created_at: string;
   reviewed_at: string | null;
 };
 
 export default function StudentIdVerificationPage() {
   const [verification, setVerification] = useState<Verification | null>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [backFile, setBackFile] = useState<File | null>(null);
+  const [admissionYear, setAdmissionYear] = useState("");
+  const [graduationYear, setGraduationYear] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,8 +55,12 @@ export default function StudentIdVerificationPage() {
     event.preventDefault();
     setError(null);
     setNotice(null);
-    if (!file) {
-      setError("学生証画像を選択してください");
+    if (!frontFile || !backFile) {
+      setError("学生証の表・裏画像を選択してください");
+      return;
+    }
+    if (!/^\d{4}$/.test(admissionYear) || !/^\d{4}$/.test(graduationYear)) {
+      setError("入学年度・卒業予定年度は4桁の西暦で入力してください");
       return;
     }
 
@@ -68,7 +77,10 @@ export default function StudentIdVerificationPage() {
 
     setLoading(true);
     const formData = new FormData();
-    formData.append("studentIdImage", file);
+    formData.append("studentIdImageFront", frontFile);
+    formData.append("studentIdImageBack", backFile);
+    formData.append("admissionYear", admissionYear);
+    formData.append("graduationYear", graduationYear);
 
     const res = await fetch("/api/verification/student-id", {
       method: "POST",
@@ -114,18 +126,40 @@ export default function StudentIdVerificationPage() {
           {verification?.reason && (
             <p className="mt-2 text-accent">差し戻し理由: {verification.reason}</p>
           )}
+          {verification?.admission_year && verification?.graduation_year ? (
+            <p className="mt-2 text-sea/70">入学年度: {verification.admission_year} / 卒業予定年度: {verification.graduation_year}</p>
+          ) : null}
         </div>
 
         <form onSubmit={onSubmit} className="grid gap-4">
           <label className="grid gap-2">
-            <span className="label">学生証画像（jpg/png/webp）</span>
+            <span className="label">学生証画像（表）</span>
             <input
               className="input"
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => setFrontFile(e.target.files?.[0] ?? null)}
             />
           </label>
+          <label className="grid gap-2">
+            <span className="label">学生証画像（裏）</span>
+            <input
+              className="input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => setBackFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2">
+              <span className="label">入学年度</span>
+              <input className="input" placeholder="例: 2024" value={admissionYear} onChange={(e) => setAdmissionYear(e.target.value)} />
+            </label>
+            <label className="grid gap-2">
+              <span className="label">卒業予定年度</span>
+              <input className="input" placeholder="例: 2028" value={graduationYear} onChange={(e) => setGraduationYear(e.target.value)} />
+            </label>
+          </div>
           {error && <p className="text-sm text-accent">{error}</p>}
           {notice && <p className="text-sm text-sea">{notice}</p>}
           <button className="btn btn-primary" disabled={loading}>
@@ -133,7 +167,7 @@ export default function StudentIdVerificationPage() {
           </button>
         </form>
 
-        <Link href="/dashboard" className="text-sm text-accent">ダッシュボードへ戻る</Link>
+        <Link href="/demo" className="text-sm text-accent">トップへ戻る</Link>
       </div>
     </div>
   );

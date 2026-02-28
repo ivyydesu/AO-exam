@@ -12,7 +12,10 @@ type VerificationItem = {
   reason: string | null;
   reviewed_at: string | null;
   created_at: string;
-  image_url: string | null;
+  admission_year: number | null;
+  graduation_year: number | null;
+  front_image_url: string | null;
+  back_image_url: string | null;
 };
 
 export default function AdminVerificationsPage() {
@@ -80,7 +83,7 @@ export default function AdminVerificationsPage() {
       <header className="card p-6">
         <h1 className="text-2xl font-semibold text-ink">運営: 学生証審査管理</h1>
         <p className="text-sm text-sea/70 mt-2">学生証の承認/却下はこの画面のみで管理します。</p>
-        <Link href="/dashboard" className="text-accent text-sm mt-3 inline-block">ダッシュボードへ戻る</Link>
+        <Link href="/admin" className="text-accent text-sm mt-3 inline-block">管理トップへ戻る</Link>
       </header>
 
       {error && <p className="text-sm text-accent">{error}</p>}
@@ -89,18 +92,28 @@ export default function AdminVerificationsPage() {
       {!loading && (
         <div className="grid gap-4">
           {items.map((item) => (
-            <div key={item.id} className="card p-5 grid gap-4 md:grid-cols-[220px_1fr]">
-              <div className="rounded-xl border border-sand overflow-hidden bg-cloud">
-                {item.image_url ? (
-                  <img src={item.image_url} alt={`${item.full_name} student id`} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="h-48 grid place-items-center text-xs text-sea/60">画像URLなし</div>
-                )}
+            <div key={item.id} className="card p-5 grid gap-4 md:grid-cols-[420px_1fr]">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-sand overflow-hidden bg-cloud">
+                  {item.front_image_url ? (
+                    <img src={item.front_image_url} alt={`${item.full_name} student id front`} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-48 grid place-items-center text-xs text-sea/60">表面なし</div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-sand overflow-hidden bg-cloud">
+                  {item.back_image_url ? (
+                    <img src={item.back_image_url} alt={`${item.full_name} student id back`} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-48 grid place-items-center text-xs text-sea/60">裏面なし</div>
+                  )}
+                </div>
               </div>
               <div className="grid gap-2">
                 <p className="text-base font-semibold text-ink">{item.full_name}</p>
                 <p className="text-sm text-sea/70">user_id: {item.user_id}</p>
                 <p className="text-sm text-sea/70">状態: {item.status}</p>
+                <p className="text-sm text-sea/70">入学年度: {item.admission_year ?? "-"} / 卒業予定: {item.graduation_year ?? "-"}</p>
                 <p className="text-sm text-sea/70">提出日: {new Date(item.created_at).toLocaleString()}</p>
                 {item.reason && <p className="text-sm text-accent">差し戻し理由: {item.reason}</p>}
                 <div className="flex gap-2 mt-2">
