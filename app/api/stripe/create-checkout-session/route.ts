@@ -6,7 +6,7 @@ import { getAppModeFromRequest } from "../../../../lib/appMode";
 export async function POST(req: NextRequest) {
   const { requestId } = await req.json();
   const appMode = getAppModeFromRequest(req);
-  const allowTestBypass = process.env.NODE_ENV !== "production" && appMode === "test";
+  const allowTestBypass = process.env.NODE_ENV !== "production" || appMode === "test";
 
   const supabaseAdmin = getSupabaseAdmin();
   const { data: request, error } = await supabaseAdmin

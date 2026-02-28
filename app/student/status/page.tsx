@@ -26,6 +26,15 @@ const LABELS: Record<string, string> = {
   rejected: "却下"
 };
 
+function ToolLink({ href, label, icon }: { href: string; label: string; icon: string }) {
+  return (
+    <Link href={href} className="flex items-center rounded-lg p-3 text-[#6B7280] transition-colors hover:bg-[#F9FAFB] hover:text-[#10B981]">
+      <span className="text-[22px]">{icon}</span>
+      <span className="ml-3 hidden lg:block">{label}</span>
+    </Link>
+  );
+}
+
 export default function StudentStatusPage() {
   const [userId, setUserId] = useState<string>("");
   const [rows, setRows] = useState<RequestRow[]>([]);
@@ -129,61 +138,72 @@ export default function StudentStatusPage() {
   if (!canShow) return <p className="text-sea">ログイン確認中...</p>;
 
   return (
-    <div className="grid gap-6">
-      <div className="card p-6">
-        <h2 className="text-2xl font-semibold text-sea">高校生 進捗確認</h2>
-        <p className="text-sm text-sea/70 mt-1">依頼の進行状況を自動同期（4秒ごと更新）</p>
-      </div>
+    <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen">
+      <div className="flex min-h-[calc(100dvh-81px)] overflow-hidden bg-[#F9FAFB] text-[#111827]">
+        <aside className="w-20 shrink-0 border-r border-[#E5E7EB] bg-white/98 lg:w-64">
+          <div className="flex h-full flex-col">
+            <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-8">
+              <ToolLink href="/calendar" label="スケジュール" icon="📅" />
+              <ToolLink href="/chat" label="メッセージ" icon="💬" />
+              <ToolLink href="/demo/request" label="申請状況" icon="📋" />
+            </nav>
+          </div>
+        </aside>
 
-      {error && <p className="text-sm text-accent">{error}</p>}
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          <header className="sticky top-0 z-20 border-b border-[#E5E7EB] bg-[#F9FAFB]/90 px-8 py-4 backdrop-blur-md">
+            <h1 className="text-3xl font-bold tracking-tight text-[#111827] md:text-4xl">申請状況の確認</h1>
+            <p className="mt-1 text-sm text-[#6B7280]">依頼の進行状況を一覧で確認できます。</p>
+          </header>
 
-      <div className="grid gap-4">
-        {rows.map((row) => {
-          const idx = FLOW.indexOf(row.status as (typeof FLOW)[number]);
-          return (
-            <div className="card p-5 grid gap-3" key={row.id}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-semibold text-sea">{row.title}</p>
-                <span className="text-xs rounded-full bg-cloud px-3 py-1 text-sea">{LABELS[row.status] ?? row.status}</span>
-              </div>
-              <p className="text-sm text-sea/75">先輩: {row.tutor_name ?? "未割当"} / 予算: ¥{row.budget.toLocaleString()}</p>
+          <div className="mx-auto w-full max-w-[1180px] px-4 pb-20 pt-4 sm:px-6 lg:px-8">
+            {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
 
-              <div className="flex flex-wrap gap-2">
-                {FLOW.map((step, i) => (
-                  <span
-                    key={step}
-                    className={`text-xs px-2 py-1 rounded-full border ${
-                      idx >= i ? "bg-sea text-white border-sea" : "bg-white text-sea/60 border-sand"
-                    }`}
-                  >
-                    {LABELS[step]}
-                  </span>
-                ))}
-              </div>
+            <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.03)]">
+              {rows.length === 0 ? (
+                <div className="px-8 py-10 text-sm text-[#6B7280]">まだ申請はありません。</div>
+              ) : (
+                rows.map((row) => {
+                  const idx = FLOW.indexOf(row.status as (typeof FLOW)[number]);
+                  return (
+                    <div key={row.id} className="border-b border-[#E5E7EB] px-8 py-6 last:border-b-0">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold text-[#111827]">{row.title}</p>
+                          <p className="mt-1 text-sm text-[#6B7280]">先輩: {row.tutor_name ?? "未割当"} / 予算: ¥{row.budget.toLocaleString()}</p>
+                        </div>
+                        <span className="rounded-full bg-[#F3F4F6] px-3 py-1 text-xs font-medium text-[#374151]">{LABELS[row.status] ?? row.status}</span>
+                      </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Link className="btn btn-secondary" href={`/student/status/${row.id}`}>
-                  詳細
-                </Link>
-                {row.status === "accepted" && (
-                  <button className="btn btn-primary" onClick={() => doCheckout(row.id)} disabled={loadingId === row.id}>
-                    Stripe与信テスト
-                  </button>
-                )}
-                {row.status === "escrowed" && (
-                  <button className="btn btn-secondary" onClick={() => doCapture(row.id)} disabled={loadingId === row.id}>
-                    売上確定テスト
-                  </button>
-                )}
-                {["accepted", "escrow_pending", "escrowed"].includes(row.status) && (
-                  <button className="btn border border-sea text-sea" onClick={() => doCancel(row.id)} disabled={loadingId === row.id}>
-                    キャンセルテスト
-                  </button>
-                )}
-              </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {FLOW.map((step, i) => (
+                          <span key={step} className={`rounded-full border px-2 py-1 text-xs ${idx >= i ? "border-[#10B981] bg-[#10B981] text-white" : "border-[#E5E7EB] bg-white text-[#6B7280]"}`}>
+                            {LABELS[step]}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Link className="rounded-lg border border-[#E5E7EB] px-4 py-2 text-sm font-medium text-[#374151] hover:bg-[#F9FAFB]" href={`/student/status/${row.id}`}>詳細</Link>
+                        {row.status === "accepted" && (
+                          <button className="rounded-lg bg-[#10B981] px-4 py-2 text-sm font-medium text-white hover:bg-green-600 disabled:opacity-60" onClick={() => doCheckout(row.id)} disabled={loadingId === row.id}>Stripe与信テスト</button>
+                        )}
+                        {row.status === "escrowed" && (
+                          <button className="rounded-lg border border-[#E5E7EB] px-4 py-2 text-sm font-medium text-[#374151] hover:bg-[#F9FAFB] disabled:opacity-60" onClick={() => doCapture(row.id)} disabled={loadingId === row.id}>売上確定テスト</button>
+                        )}
+                        {["accepted", "escrow_pending", "escrowed"].includes(row.status) && (
+                          <button className="rounded-lg border border-[#FCA5A5] px-4 py-2 text-sm font-medium text-[#B91C1C] hover:bg-red-50 disabled:opacity-60" onClick={() => doCancel(row.id)} disabled={loadingId === row.id}>キャンセルテスト</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
-          );
-        })}
+
+            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
+          </div>
+        </main>
       </div>
     </div>
   );

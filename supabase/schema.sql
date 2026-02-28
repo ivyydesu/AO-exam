@@ -37,6 +37,7 @@ create table if not exists tutor_verifications (
 create table if not exists tutor_profiles (
   user_id uuid primary key references profiles(id) on delete cascade,
   avatar_url text,
+  cover_url text,
   university text not null default '',
   department text not null default '',
   seminar text not null default '',
@@ -50,6 +51,28 @@ create table if not exists tutor_profiles (
 
 alter table tutor_profiles
 add column if not exists is_published boolean not null default false;
+alter table tutor_profiles
+add column if not exists cover_url text;
+
+-- Per-user notification preferences
+create table if not exists notification_settings (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  email_new_request boolean not null default true,
+  email_new_message boolean not null default true,
+  email_favorite boolean not null default false,
+  email_ops boolean not null default true,
+  email_2fa_enabled boolean not null default false,
+  push_reminder boolean not null default true,
+  line_enabled boolean not null default true,
+  line_new_request boolean not null default true,
+  line_status_update boolean not null default true,
+  line_new_message boolean not null default true,
+  updated_at timestamptz default now(),
+  created_at timestamptz default now()
+);
+
+alter table notification_settings
+add column if not exists email_2fa_enabled boolean not null default false;
 
 -- Requests
 create table if not exists requests (
@@ -97,6 +120,54 @@ create table if not exists request_details (
   updated_at timestamptz default now()
 );
 
+create table if not exists call_sessions (
+  request_id uuid primary key references requests(id) on delete cascade,
+  room_name text not null unique,
+  room_password text not null,
+  moderator_user_id uuid not null references profiles(id) on delete cascade,
+  created_by uuid not null references profiles(id) on delete cascade,
+  recording_status text not null default 'idle' check (recording_status in ('idle', 'recording')),
+  started_at timestamptz,
+  ended_at timestamptz,
+  updated_at timestamptz default now(),
+  created_at timestamptz default now()
+);
+
+create table if not exists call_participants (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid not null references requests(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  participant_role text not null check (participant_role in ('student', 'tutor')),
+  is_moderator boolean not null default false,
+  joined_at timestamptz default now(),
+  left_at timestamptz
+);
+
+create table if not exists call_events (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid not null references requests(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  event_type text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table if not exists reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid not null references profiles(id) on delete cascade,
+  target_user_id uuid references profiles(id) on delete set null,
+  request_id uuid references requests(id) on delete set null,
+  report_type text not null check (report_type in ('user', 'request', 'message', 'call', 'other')),
+  category text not null,
+  details text not null,
+  status text not null default 'open' check (status in ('open', 'reviewing', 'resolved', 'dismissed')),
+  admin_note text,
+  reviewed_by uuid references profiles(id) on delete set null,
+  reviewed_at timestamptz,
+  updated_at timestamptz default now(),
+  created_at timestamptz default now()
+);
+
 -- Realtime (for chat)
 alter publication supabase_realtime add table messages;
 
@@ -125,9 +196,14 @@ alter table requests enable row level security;
 alter table messages enable row level security;
 alter table reviews enable row level security;
 alter table request_details enable row level security;
+alter table call_sessions enable row level security;
+alter table call_participants enable row level security;
+alter table call_events enable row level security;
+alter table reports enable row level security;
 alter table line_link_states enable row level security;
 alter table tutor_verifications enable row level security;
 alter table tutor_profiles enable row level security;
+alter table notification_settings enable row level security;
 
 -- Profiles policies
 create policy "profiles_select" on profiles
@@ -174,6 +250,18 @@ drop policy if exists "tutor_profiles_update_own" on tutor_profiles;
 create policy "tutor_profiles_update_own" on tutor_profiles
   for update using (auth.uid() = user_id);
 
+drop policy if exists "notification_settings_select_own" on notification_settings;
+create policy "notification_settings_select_own" on notification_settings
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "notification_settings_insert_own" on notification_settings;
+create policy "notification_settings_insert_own" on notification_settings
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "notification_settings_update_own" on notification_settings;
+create policy "notification_settings_update_own" on notification_settings
+  for update using (auth.uid() = user_id);
+
 -- Requests policies
 create policy "requests_select" on requests
   for select using (auth.uid() is not null);
@@ -217,6 +305,56 @@ create policy "request_details_update" on request_details
     exists (
       select 1 from requests r
       where r.id = request_id and (r.requester_id = auth.uid() or r.tutor_id = auth.uid())
+    )
+  );
+
+drop policy if exists "call_sessions_select_participants" on call_sessions;
+create policy "call_sessions_select_participants" on call_sessions
+  for select using (
+    exists (
+      select 1 from requests r
+      where r.id = request_id and (r.requester_id = auth.uid() or r.tutor_id = auth.uid())
+    )
+  );
+
+drop policy if exists "call_participants_select_participants" on call_participants;
+create policy "call_participants_select_participants" on call_participants
+  for select using (
+    exists (
+      select 1 from requests r
+      where r.id = request_id and (r.requester_id = auth.uid() or r.tutor_id = auth.uid())
+    )
+  );
+
+drop policy if exists "call_events_select_participants" on call_events;
+create policy "call_events_select_participants" on call_events
+  for select using (
+    exists (
+      select 1 from requests r
+      where r.id = request_id and (r.requester_id = auth.uid() or r.tutor_id = auth.uid())
+    )
+  );
+
+drop policy if exists "reports_select_own_or_admin" on reports;
+create policy "reports_select_own_or_admin" on reports
+  for select using (
+    auth.uid() = reporter_id
+    or exists (
+      select 1 from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
+
+drop policy if exists "reports_insert_own" on reports;
+create policy "reports_insert_own" on reports
+  for insert with check (auth.uid() = reporter_id);
+
+drop policy if exists "reports_update_admin_only" on reports;
+create policy "reports_update_admin_only" on reports
+  for update using (
+    exists (
+      select 1 from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
     )
   );
 

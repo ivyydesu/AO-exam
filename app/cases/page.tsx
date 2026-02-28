@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BrandLogo from "../../components/BrandLogo";
 
 const cases = [
   {
@@ -24,10 +25,7 @@ export default function CasesPage() {
     <div className="grid gap-8">
       <header className="rounded-3xl bg-white/90 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sand px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-accent text-white grid place-items-center font-bold">AO</div>
-            <p className="text-xl font-semibold text-ink">AO Match</p>
-          </div>
+          <BrandLogo textClassName="text-xl font-semibold text-ink" />
           <div className="flex-1 max-w-xl">
             <div className="flex items-center gap-2 rounded-full border border-sand bg-white px-4 py-2">
               <span className="text-xs text-sea/60">サービス</span>
@@ -36,7 +34,7 @@ export default function CasesPage() {
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm text-sea/70">
-            <Link href="/status">取引管理</Link>
+            <Link href="/demo/request">取引管理</Link>
             <Link href="/cases">案件管理</Link>
             <Link href="/favorites">お気に入り</Link>
             <Link className="btn btn-secondary" href="/demo">サービスを探す</Link>
@@ -47,7 +45,7 @@ export default function CasesPage() {
               <div className="absolute right-0 mt-3 w-56 rounded-xl border border-sand bg-white p-3 shadow-lg">
                 <p className="text-sm font-semibold text-sea">kota0507</p>
                 <div className="mt-2 grid gap-2 text-sm text-sea/70">
-                  <Link href="/status">注文履歴</Link>
+                  <Link href="/demo/request">注文履歴</Link>
                   <Link href="/favorites">お気に入り</Link>
                   <Link href="/settings">設定</Link>
                 </div>

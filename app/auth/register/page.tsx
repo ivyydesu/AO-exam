@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 import AuthDevTools from "../../../components/AuthDevTools";
+import { normalizeAuthErrorMessage } from "../../../lib/auth/emailThrottle";
 
 const roles = [
   { value: "student", label: "高校生" },
@@ -60,7 +61,7 @@ function RegisterPageContent() {
         `/auth/login?role=${role}&email=${encodeURIComponent(email)}&registered=1`
       );
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to fetch";
+      const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
         setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
       } else {

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getClient, getVisitorId } from "../../lib/demoClient";
-import DemoTopNav from "../../components/DemoTopNav";
 
 type FavoriteItem = { id: string; title: string; tutor: string };
 
@@ -30,7 +29,6 @@ export default function FavoritesPage() {
   }, []);
   return (
     <div className="grid gap-8">
-      <DemoTopNav />
 
       <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
         <aside className="card p-6 text-sm text-sea/70">

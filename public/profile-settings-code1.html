@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ja"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Profile Settings</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#10B981", // Emerald 500 for the green accents requested
+              "background-light": "#F9FAFB", // Off-white clean background
+              "background-dark": "#111827", // Deep gray/black for dark mode
+              "surface-light": "#FFFFFF",
+              "surface-dark": "#1F2937",
+              "border-light": "#E5E7EB",
+              "border-dark": "#374151",
+              "text-main-light": "#111827",
+              "text-main-dark": "#F9FAFB",
+              "text-sub-light": "#6B7280",
+              "text-sub-dark": "#9CA3AF",
+            },
+            fontFamily: {
+              display: ['Inter', 'Noto Sans JP', 'sans-serif'],
+              sans: ['Inter', 'Noto Sans JP', 'sans-serif'],
+            },
+            borderRadius: {
+              DEFAULT: "0.75rem", // 12px
+              lg: "1rem", // 16px
+              xl: "1.5rem",
+            },
+            boxShadow: {
+              'soft': '0 2px 10px rgba(0, 0, 0, 0.03)',
+              'glow': '0 0 10px rgba(16, 185, 129, 0.2)',
+            }
+          },
+        },
+      };
+    </script>
+<style>.mesh-gradient {
+            background-color: #E0E7FF;
+            background-image: 
+                radial-gradient(at 10% 10%, #FEF3C7 0px, transparent 50%),
+                radial-gradient(at 90% 10%, #D1FAE5 0px, transparent 50%),
+                radial-gradient(at 50% 90%, #DBEAFE 0px, transparent 50%);
+        }
+        .dark .mesh-gradient {
+            background-color: #1F2937;
+            background-image: 
+                radial-gradient(at 10% 10%, #312E81 0px, transparent 50%),
+                radial-gradient(at 90% 10%, #064E3B 0px, transparent 50%),
+                radial-gradient(at 50% 90%, #1E3A8A 0px, transparent 50%);
+        }.no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-text-main-light dark:text-text-main-dark font-sans antialiased h-screen flex overflow-hidden selection:bg-primary selection:text-white">
+<aside class="w-20 lg:w-64 flex-shrink-0 border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark flex flex-col justify-between transition-all duration-300">
+<div class="flex flex-col h-full">
+<div class="h-16 flex items-center justify-center lg:justify-start lg:px-6 border-b border-transparent">
+<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-xl shadow-glow">
+                    A
+                </div>
+<span class="ml-3 font-bold text-lg hidden lg:block tracking-tight">AO Match</span>
+</div>
+<nav class="flex-1 px-3 py-6 space-y-2 overflow-y-auto no-scrollbar">
+<a class="flex items-center p-3 text-text-sub-light dark:text-text-sub-dark hover:bg-background-light dark:hover:bg-background-dark rounded-lg group transition-colors" href="/dashboard" target="_top">
+<span class="material-icons-round text-2xl group-hover:text-primary transition-colors">dashboard</span>
+<span class="ml-3 font-medium hidden lg:block">Dashboard</span>
+</a>
+<a class="flex items-center p-3 text-text-sub-light dark:text-text-sub-dark hover:bg-background-light dark:hover:bg-background-dark rounded-lg group transition-colors" href="/search" target="_top">
+<span class="material-icons-round text-2xl group-hover:text-primary transition-colors">people</span>
+<span class="ml-3 font-medium hidden lg:block">Students</span>
+</a>
+<a class="flex items-center p-3 text-text-sub-light dark:text-text-sub-dark hover:bg-background-light dark:hover:bg-background-dark rounded-lg group transition-colors" href="/demo/request" target="_top">
+<span class="material-icons-round text-2xl group-hover:text-primary transition-colors">event_note</span>
+<span class="ml-3 font-medium hidden lg:block">Schedule</span>
+</a>
+<a class="flex items-center p-3 text-text-sub-light dark:text-text-sub-dark hover:bg-background-light dark:hover:bg-background-dark rounded-lg group transition-colors" href="/notifications" target="_top">
+<span class="material-icons-round text-2xl group-hover:text-primary transition-colors">chat_bubble_outline</span>
+<span class="ml-3 font-medium hidden lg:block">Messages</span>
+</a>
+<div class="pt-4 mt-4 border-t border-border-light dark:border-border-dark"></div>
+<a class="flex items-center p-3 text-text-sub-light dark:text-text-sub-dark hover:bg-background-light dark:hover:bg-background-dark rounded-lg group transition-colors" href="/profile/settings?tab=notifications" target="_top">
+<span class="material-icons-round text-2xl group-hover:text-primary transition-colors">notifications</span>
+<span class="ml-3 font-medium hidden lg:block">Notifications</span>
+</a>
+<a class="flex items-center p-3 bg-primary/10 text-primary rounded-lg group transition-colors" href="/profile/settings?tab=profile" target="_top">
+<span class="material-icons-round text-2xl">settings</span>
+<span class="ml-3 font-medium hidden lg:block">Settings</span>
+</a>
+</nav>
+<div class="p-3 border-t border-border-light dark:border-border-dark">
+<button class="w-full flex items-center justify-center lg:justify-start p-2 rounded-lg hover:bg-background-light dark:hover:bg-background-dark transition-colors">
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-400 to-blue-500 overflow-hidden">
+<img alt="User avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3v1pjgM_MkbYljg80G3cjJdEr9uteakLVy3YnH0n_cHgQgILwDo7XNeE7KGySmBCXv70ooAfkwKlTGf4k8YC67628D352p1LVeS3RC7mNPLlLm0z7wrEKFfjE2ZjVjRUv_cVWcYLnhT90gPWQ3jmTPpQPm7bRVW5D5H87UecdMXjpa-vJHJ9w9KnQnA-7a8IBBtL02T-QI_CDN5sKObxS2JjcgxGqba8K8zDX_t6gFxPDUMw8Rxje4aTiikA0KzmuC1gCBtkMpHw"/>
+</div>
+<div class="ml-3 text-left hidden lg:block">
+<p class="text-sm font-medium text-text-main-light dark:text-text-main-dark">Kotaro</p>
+<p class="text-xs text-text-sub-light dark:text-text-sub-dark">View Profile</p>
+</div>
+<span class="material-icons-round ml-auto text-text-sub-light dark:text-text-sub-dark hidden lg:block text-sm">unfold_more</span>
+</button>
+</div>
+</div>
+</aside>
+<main class="flex-1 overflow-y-auto relative h-full">
+<header class="sticky top-0 z-20 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-border-light dark:border-border-dark px-8 py-4 flex justify-between items-center">
+<div>
+<h1 class="text-2xl font-bold text-text-main-light dark:text-text-main-dark">プロフィール設定</h1>
+<p class="text-sm text-text-sub-light dark:text-text-sub-dark mt-1">大学生プロフィール登録（検索対象）</p>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden md:block">
+<span class="absolute inset-y-0 left-0 flex items-center pl-3 text-text-sub-light dark:text-text-sub-dark">
+<span class="material-icons-round text-lg">search</span>
+</span>
+<input class="pl-10 pr-4 py-2 text-sm bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none w-64 transition-all text-text-main-light dark:text-text-main-dark" placeholder="Search..." type="text"/>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark flex items-center justify-center text-text-sub-light dark:text-text-sub-dark hover:text-primary transition-colors">
+<span class="material-icons-round">notifications</span>
+</button>
+</div>
+</header>
+<div class="p-8 max-w-5xl mx-auto pb-20">
+<div class="bg-surface-light dark:bg-surface-dark rounded-xl shadow-soft border border-border-light dark:border-border-dark overflow-hidden">
+<div class="h-40 w-full mesh-gradient relative">
+<button class="absolute top-4 right-4 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white dark:text-gray-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/20 transition-all flex items-center gap-1">
+<span class="material-icons-round text-sm">edit</span>
+                        Edit Cover
+                    </button>
+</div>
+<div class="px-8 pb-8">
+<div class="flex flex-col md:flex-row items-end md:items-center -mt-12 mb-6 gap-6 relative">
+<div class="relative group">
+<div class="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-surface-light dark:border-surface-dark bg-gray-200 overflow-hidden shadow-md">
+<img alt="Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_nAceg5giP0lAfkC4LTChHWjDetTpQvguhDKgLY80NxTHTo4ZJvaRoRJdpGM4_3ZHOYFGOwU5XIv1RjC3MegzoQQ8W32cFYxYVLAw0gCif84h0VpLCtTKMyuGC3kkUHhE9I_NTnmhiKO3vlzJ4EhcXa2eZVu7S41663lLVMmbkLeDKUS5tZGhBWvNyFAS_dmPqFGqkUtlKEcCjjuIW3x5cLtLzyY4gZr0H5xJIScCwl3KDT10NgYGtt7pqjEfrYf34C6lFfD_yRg"/>
+</div>
+<button class="absolute bottom-1 right-1 bg-surface-light dark:bg-surface-dark p-1.5 rounded-full border border-border-light dark:border-border-dark shadow-sm text-text-sub-light dark:text-text-sub-dark hover:text-primary transition-colors group-hover:scale-110 duration-200">
+<span class="material-icons-round text-lg">camera_alt</span>
+</button>
+</div>
+<div class="flex-1 text-center md:text-left pt-2 md:pt-12">
+<h2 class="text-2xl font-bold text-text-main-light dark:text-text-main-dark flex items-center justify-center md:justify-start gap-2">
+                                kotaro
+                                <span class="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-2 py-0.5 rounded-full font-medium border border-blue-200 dark:border-blue-800">Verified</span>
+</h2>
+<p class="text-text-sub-light dark:text-text-sub-dark mt-1 text-sm">成蹊大学</p>
+</div>
+<div class="flex items-center gap-4 mt-4 md:mt-12 w-full md:w-auto justify-between md:justify-end">
+<button class="px-4 py-2 rounded-lg border border-primary text-primary hover:bg-primary/5 font-medium text-sm transition-colors flex items-center gap-2">
+<span class="material-icons-round text-sm">image</span>
+                                写真を変更
+                            </button>
+<div class="flex items-center gap-3 bg-background-light dark:bg-background-dark/50 px-3 py-1.5 rounded-lg border border-border-light dark:border-border-dark">
+<label class="text-sm font-medium text-text-main-light dark:text-text-main-dark cursor-pointer select-none" for="status-toggle">
+                                    公開中
+                                </label>
+<div class="relative inline-block w-11 h-6 align-middle select-none">
+<input checked="" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-300 ease-in-out left-0.5 top-0.5 checked:translate-x-full checked:border-primary" id="status-toggle" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 dark:bg-gray-700 cursor-pointer transition-colors duration-300" for="status-toggle"></label>
+</div>
+</div>
+</div>
+</div>
+<hr class="border-border-light dark:border-border-dark mb-8"/>
+<form>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+<div class="space-y-2">
+<label class="block text-xs font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider pl-1">氏名</label>
+<input class="w-full bg-background-light dark:bg-gray-800/50 border border-border-light dark:border-border-dark rounded-lg px-4 py-2.5 text-text-main-light dark:text-text-main-dark focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder-gray-400" type="text" value="kotaro"/>
+</div>
+<div class="space-y-2">
+<label class="block text-xs font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider pl-1">学校名</label>
+<input class="w-full bg-background-light dark:bg-gray-800/50 border border-border-light dark:border-border-dark rounded-lg px-4 py-2.5 text-text-main-light dark:text-text-main-dark focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder-gray-400" type="text" value="成蹊大学"/>
+</div>
+<div class="space-y-2">
+<label class="block text-xs font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider pl-1">大学</label>
+<div class="relative">
+<input class="w-full bg-background-light dark:bg-gray-800/50 border border-border-light dark:border-border-dark rounded-lg px-4 py-2.5 text-text-main-light dark:text-text-main-dark focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder-gray-400" placeholder="大学名を入力" type="text"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="block text-xs font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider pl-1">学部</label>
+<input class="w-full bg-background-light dark:bg-gray-800/50 border border-border-light dark:border-border-dark rounded-lg px-4 py-2.5 text-text-main-light dark:text-text-main-dark focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder-gray-400" type="text" value="理工学部"/>
+</div>
+<div class="space-y-2">
+<label class="block text-xs font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider pl-1">ゼミ</label>
+<input class="w-full bg-background-light dark:bg-gray-800/50 border border-border-light dark:border-border-dark rounded-lg px-4 py-2.5 text-text-main-light dark:text-text-main-dark focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder-gray-400" type="text" value="青木ゼミ"/>
+</div>
+<div class="space-y-2">
+<label class="block text-xs font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider pl-1">学年</label>
+<div class="relative">
+<select class="w-full bg-background-light dark:bg-gray-800/50 border border-border-light dark:border-border-dark rounded-lg px-4 py-2.5 text-text-main-light dark:text-text-main-dark focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none transition-all appearance-none cursor-pointer">
+<option>1年</option>
+<option selected="">2年</option>
+<option>3年</option>
+<option>4年</option>
+<option>修士1年</option>
+<option>修士2年</option>
+</select>
+<span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-text-sub-light dark:text-text-sub-dark">
+<span class="material-icons-round text-xl">expand_more</span>
+</span>
+</div>
+</div>
+<div class="space-y-2 md:col-span-2">
+<label class="block text-xs font-semibold text-text-sub-light dark:text-text-sub-dark uppercase tracking-wider pl-1">探究テーマ</label>
+<textarea class="w-full bg-background-light dark:bg-gray-800/50 border border-border-light dark:border-border-dark rounded-lg px-4 py-2.5 text-text-main-light dark:text-text-main-dark focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder-gray-400 resize-none" placeholder="あなたの探究テーマについて詳しく教えてください" rows="3"></textarea>
+</div>
+</div>
+<div class="mt-8 flex justify-end gap-3">
+<button class="px-6 py-2.5 rounded-lg text-text-sub-light dark:text-text-sub-dark hover:bg-background-light dark:hover:bg-gray-800 border border-transparent hover:border-border-light dark:hover:border-border-dark transition-all font-medium text-sm" type="button">
+                                キャンセル
+                            </button>
+<button class="px-6 py-2.5 rounded-lg bg-primary hover:bg-green-600 text-white shadow-lg shadow-green-500/20 transition-all font-medium text-sm flex items-center gap-2" type="submit">
+<span class="material-icons-round text-sm">save</span>
+                                保存する
+                            </button>
+</div>
+</form>
+</div>
+</div>
+<p class="text-center text-xs text-text-sub-light dark:text-text-sub-dark mt-8 opacity-60">
+                © 2024 AO Match. All rights reserved.
+            </p>
+</div>
+</main>
+<style>.toggle-checkbox:checked {
+            right: 0;
+            border-color: #10B981;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #10B981;
+        }
+    </style>
+
+</body></html>

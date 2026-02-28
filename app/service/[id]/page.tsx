@@ -1,21 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getClient } from "../../../lib/demoClient";
 import { getSupabaseClient } from "../../../lib/supabase/client";
-
-const makeAvatar = (skin: string, hair: string) =>
-  `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 160 160">
-      <rect width="160" height="160" rx="24" fill="${skin}"/>
-      <circle cx="80" cy="70" r="36" fill="#F7D7C4"/>
-      <path d="M44 70c8-22 64-22 72 0v12H44z" fill="${hair}"/>
-      <circle cx="68" cy="72" r="4" fill="#333"/>
-      <circle cx="92" cy="72" r="4" fill="#333"/>
-      <path d="M68 92c8 8 16 8 24 0" stroke="#333" stroke-width="4" fill="none" stroke-linecap="round"/>
-    </svg>`
-  )}`;
+import ReportDialog from "../../../components/ReportDialog";
 
 type Tutor = {
   id: string;
@@ -24,114 +13,49 @@ type Tutor = {
   department: string;
   year: string;
   acceptedUniversities: string[];
-  cramSchool: string;
   theme: string;
   experience: string;
   rating: number;
   reviews: number;
   avatar: string;
+  seminar: string;
 };
 
 const fallbackTutors: Record<string, Tutor> = {
   "tutor-1": {
     id: "tutor-1",
-    name: "木戸洵成",
+    name: "木戸 洵成",
     university: "成蹊大学",
     department: "法学部政治学科",
     year: "2年",
     acceptedUniversities: ["成蹊大学 法学部政治学科"],
-    cramSchool: "早稲田塾",
     theme: "教育行政といじめ問題について",
     experience: "個人的なサポートで成蹊大学法学部に3名合格",
     rating: 4.9,
     reviews: 12,
-    avatar: "/avatars/mentor.png"
-  },
-  "tutor-2": {
-    id: "tutor-2",
-    name: "佐々木 颯太",
-    university: "明治大学",
-    department: "情報コミュニケーション学部",
-    year: "3年",
-    acceptedUniversities: ["明治大学 情報コミュニケーション学部", "東洋大学 社会学部"],
-    cramSchool: "河合塾",
-    theme: "地域コミュニティとSNSの関係",
-    experience: "個別相談で明治大・東洋大に2名合格",
-    rating: 4.7,
-    reviews: 9,
-    avatar: makeAvatar("#F9F1FF", "#2F2D3A")
-  },
-  "tutor-3": {
-    id: "tutor-3",
-    name: "田中 みさき",
-    university: "立教大学",
-    department: "社会学部",
-    year: "2年",
-    acceptedUniversities: ["立教大学 社会学部"],
-    cramSchool: "栄光ゼミナール",
-    theme: "若者のボランティア参加の動機",
-    experience: "志望理由書の添削で立教に1名合格",
-    rating: 4.8,
-    reviews: 6,
-    avatar: makeAvatar("#FFF5E8", "#5B3A29")
-  },
-  "tutor-4": {
-    id: "tutor-4",
-    name: "小林 航",
-    university: "中央大学",
-    department: "法学部",
-    year: "4年",
-    acceptedUniversities: ["中央大学 法学部", "日本大学 法学部"],
-    cramSchool: "早稲田塾",
-    theme: "若者の投票行動の変化",
-    experience: "面接対策で中央大に2名合格",
-    rating: 4.6,
-    reviews: 5,
-    avatar: makeAvatar("#E8FFF4", "#1F3A2B")
-  },
-  "tutor-5": {
-    id: "tutor-5",
-    name: "山本 葵",
-    university: "青山学院大学",
-    department: "教育人間科学部",
-    year: "1年",
-    acceptedUniversities: ["青山学院大学 教育人間科学部"],
-    cramSchool: "SAPIX",
-    theme: "教育現場のICT活用",
-    experience: "活動実績整理で青学に1名合格",
-    rating: 4.5,
-    reviews: 4,
-    avatar: makeAvatar("#EAF4FF", "#2A3E6B")
-  },
-  "tutor-6": {
-    id: "tutor-6",
-    name: "鈴木 海斗",
-    university: "法政大学",
-    department: "経営学部",
-    year: "3年",
-    acceptedUniversities: ["法政大学 経営学部", "専修大学 経営学部"],
-    cramSchool: "東進ハイスクール",
-    theme: "部活動とリーダーシップ形成",
-    experience: "志望理由書の改善で法政に1名合格",
-    rating: 4.4,
-    reviews: 3,
-    avatar: makeAvatar("#FFF0F1", "#3A2A2A")
-  },
-  "tutor-7": {
-    id: "tutor-7",
-    name: "石井 玲奈",
-    university: "日本大学",
-    department: "文理学部",
-    year: "2年",
-    acceptedUniversities: ["日本大学 文理学部"],
-    cramSchool: "個別教室のトライ",
-    theme: "探究学習における問いの立て方",
-    experience: "面接練習で日大に1名合格",
-    rating: 4.3,
-    reviews: 2,
-    avatar: makeAvatar("#F3FFF0", "#2C3A23")
+    avatar: "/avatars/mentor.png",
+    seminar: "教育行政ゼミ"
   }
 };
+
+const reviewItems = [
+  {
+    name: "佐藤 K. さん",
+    meta: "高校3年生 / 法学部志望",
+    text: "志望理由書の添削をお願いしました。自分では気づけなかった視点を指摘していただき、内容がとても深まりました。",
+    stars: 5,
+    avatar:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuBeIy9jqCr9UytYtzzOGgcNkWpK6Cji5q3SEVaqR1m4uS4RBMNtnNQZ69JWkIgOcMpbwdj6nAzMowS2JYpBatduww0VsDejudrCcX4yBwuhguo-45LR-H1UqFK7yOoO8OqVSpblLPXGGcGzYm1MUOMgB5DecKKxwGauABzJh8c3XPy-P3ZcwvT7ziTWT56nCmGblZO6ms3mSL8YRmzFjamrgfQLlawKsNTLb6m_N5khMeQlptSCXGamWuz2rDgIhKl0s43PDg47fUQ"
+  },
+  {
+    name: "田中 M. さん",
+    meta: "高校2年生 / 探究活動中",
+    text: "探究テーマがなかなか決まらず悩んでいましたが、木戸先輩との会話の中でやりたいことが見えてきました。",
+    stars: 4,
+    avatar:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuA5gREnNzrxb8iYEAK0LeCpc4sSyG6hODt4QH22zKoYjYGIQPFLXfJLWSH-DGGpOP3QLiAkZKOupF5NHvTpw1BoMHb4xJeNzKVIIAktpNDn6kJjUC90HoJCLv_rtcFDhayygE1ksKTMO_3ULx-3aVWAy5vmhohjF81WGdCYuQBmM-hoELhuKbMLCMv7rPejzVQydEHtBqZJP6TZBD2zXCI8foPSfmC9x9INRfW5eU4jgFtRJ3-IvfqX-gpPF3Ie8BT8fXMbGH3DBJs"
+  }
+];
 
 export default function ServicePage({ params }: { params: { id: string } }) {
   const [tutor, setTutor] = useState<Tutor>(fallbackTutors[params.id] ?? fallbackTutors["tutor-1"]);
@@ -151,26 +75,27 @@ export default function ServicePage({ params }: { params: { id: string } }) {
   }, []);
 
   useEffect(() => {
-    const supabase = getClient();
-    if (!supabase) return;
     const load = async () => {
-      const { data } = await supabase.from("demo_tutors").select("*").eq("id", params.id).maybeSingle();
-      if (data) {
-        setTutor({
-          id: data.id,
-          name: data.name,
-          university: data.university,
-          department: data.department,
-          year: data.year ?? "2年",
-          acceptedUniversities: data.accepted_universities ?? [],
-          cramSchool: data.cram_school ?? "なし",
-          theme: data.theme ?? "",
-          experience: data.experience ?? "",
-          rating: Number(data.rating ?? 0),
-          reviews: Number(data.reviews ?? 0),
-          avatar: data.avatar_url || fallbackTutors["tutor-1"].avatar
-        });
-        return;
+      const supabase = getClient();
+      if (supabase) {
+        const { data } = await supabase.from("demo_tutors").select("*").eq("id", params.id).maybeSingle();
+        if (data) {
+          setTutor({
+            id: data.id,
+            name: data.name,
+            university: data.university,
+            department: data.department,
+            year: data.year ?? "2年",
+            acceptedUniversities: data.accepted_universities ?? [],
+            theme: data.theme ?? "",
+            experience: data.experience ?? "",
+            rating: Number(data.rating ?? 0),
+            reviews: Number(data.reviews ?? 0),
+            avatar: data.avatar_url || fallbackTutors["tutor-1"].avatar,
+            seminar: data.seminar || "教育行政ゼミ"
+          });
+          return;
+        }
       }
 
       try {
@@ -187,6 +112,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           researchTheme: string;
           coachingExperience: string;
           avatar: string;
+          seminar: string;
         };
         setTutor({
           id: item.id,
@@ -195,59 +121,185 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           department: item.department || "",
           year: item.grade || "",
           acceptedUniversities: item.school ? [item.school] : [],
-          cramSchool: "未設定",
           theme: item.researchTheme || "",
           experience: item.coachingExperience || "",
           rating: 5,
           reviews: 0,
-          avatar: item.avatar || fallbackTutors["tutor-1"].avatar
+          avatar: item.avatar || fallbackTutors["tutor-1"].avatar,
+          seminar: item.seminar || "教育行政ゼミ"
         });
       } catch {
-        // ignore
+        // no-op
       }
     };
     load();
   }, [params.id]);
 
-  return (
-    <div className="grid gap-6">
-      <header className="rounded-3xl bg-white border border-sand p-6 shadow-soft">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#FF6B00] via-[#F43787] to-[#6C5CE7]" />
-            <p className="text-xl font-semibold text-ink">AO Match</p>
-          </div>
-          <div className="text-sm text-sea/70 flex gap-3">
-            <Link href="/demo">一覧へ戻る</Link>
-            <Link href="/favorites">お気に入り</Link>
-          </div>
-        </div>
-      </header>
+  const stars = useMemo(() => Array.from({ length: 5 }, (_, i) => i < Math.round(tutor.rating)), [tutor.rating]);
 
-      <section className="grid gap-6 md:grid-cols-[260px_1fr]">
-        <div className="card p-5 grid gap-3">
-          <img className="w-full rounded-2xl object-cover" src={tutor.avatar} alt={tutor.name} />
-          <p className="text-sm text-sea/60">評価 ★ {tutor.rating}（{tutor.reviews}）</p>
-          {sessionRole === "tutor" ? (
-            <p className="text-xs rounded-xl border border-sand bg-cloud px-3 py-2 text-sea/75">
-              大学生アカウントでは依頼はできません（高校生アカウントのみ）
-            </p>
-          ) : (
-            <Link className="btn btn-primary w-full text-center" href={`/requests/new?tutorId=${tutor.id}`}>
-              この先輩に依頼
-            </Link>
-          )}
+  return (
+    <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen bg-[#FDFDFD]">
+      <main className="mx-auto w-full max-w-[1600px] px-6 py-8">
+        <div className="mb-6 flex items-center text-sm text-gray-500">
+          <Link href="/demo" className="hover:text-[#FF8C66]">トップ</Link>
+          <span className="mx-2">›</span>
+          <Link href="/demo" className="hover:text-[#FF8C66]">メンター一覧</Link>
+          <span className="mx-2">›</span>
+          <span className="font-medium text-gray-900">{tutor.name}</span>
         </div>
-        <div className="card p-6 grid gap-3">
-          <h1 className="text-2xl font-semibold text-ink">{tutor.name}</h1>
-          <p className="text-sm text-sea/70">{tutor.university} {tutor.department} {tutor.year}</p>
-          <div className="grid gap-1 text-sm text-sea/70">
-            <p>現役時にAOで合格した学校: {tutor.acceptedUniversities.join(" / ")}</p>
-            <p>探究テーマ: {tutor.theme}</p>
-            <p>指導経験: {tutor.experience}</p>
+
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+          <div className="space-y-8 lg:col-span-8">
+            <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8">
+              <div className="flex flex-col gap-8 md:flex-row">
+                <div className="w-full shrink-0 md:w-1/3">
+                  <div className="group relative aspect-[3/4] overflow-hidden rounded-xl shadow-md">
+                    <img alt={tutor.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" src={tutor.avatar} />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-4">
+                      <div className="text-sm font-medium text-white">★ {tutor.rating} ({tutor.reviews}件)</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-1 flex-col">
+                  <div className="mb-4">
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      <span className="inline-flex items-center rounded-full border border-green-200 bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">在籍確認済み</span>
+                      <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">トップ評価</span>
+                      <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-800">返信が早い</span>
+                    </div>
+                    <h1 className="mb-1 text-3xl font-bold text-gray-900">{tutor.name}</h1>
+                    <p className="text-lg font-medium text-[#FF8C66]">{tutor.university} {tutor.department} {tutor.year}</p>
+                  </div>
+
+                  <div className="mb-6 text-gray-600">
+                    <p>
+                      こんにちは！{tutor.university}の{tutor.name}です。高校時代は探究活動に熱中していました。{tutor.theme}
+                      一緒にあなたの強みを言語化し、AO入試で伝わる形に整えます。
+                    </p>
+                  </div>
+
+                  <div className="mt-auto grid grid-cols-2 gap-4">
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <span className="mb-1 block text-xs text-gray-500">所属ゼミ</span>
+                      <span className="font-medium text-gray-800">{tutor.seminar}</span>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <span className="mb-1 block text-xs text-gray-500">合格校</span>
+                      <span className="font-medium text-gray-800">{tutor.acceptedUniversities[0] || "未設定"}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-6 md:grid-cols-2">
+              <div className="h-full rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+                <h3 className="mb-4 text-lg font-bold text-gray-900">探究テーマ</h3>
+                <ul className="space-y-3 text-gray-700">
+                  <li>• 教育行政といじめ問題について</li>
+                  <li>• 若者の政治参加とSNSの影響</li>
+                  <li>• 地域コミュニティにおける学生の役割</li>
+                </ul>
+              </div>
+              <div className="h-full rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+                <h3 className="mb-4 text-lg font-bold text-gray-900">指導経験・実績</h3>
+                <ul className="space-y-3 text-gray-700">
+                  <li>• {tutor.experience}</li>
+                  <li>• 志望理由書の添削経験多数</li>
+                  <li>• 面接練習の壁打ち相手として好評</li>
+                </ul>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8">
+              <div className="mb-8 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">先輩へのレビュー</h3>
+              </div>
+              <div className="space-y-6">
+                {reviewItems.map((review) => (
+                  <div key={review.name} className="border-b border-gray-100 pb-6 last:border-0 last:pb-0">
+                    <div className="mb-2 flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <img alt={review.name} className="h-10 w-10 rounded-full object-cover" src={review.avatar} />
+                        <div>
+                          <div className="text-sm font-bold text-gray-900">{review.name}</div>
+                          <div className="text-xs text-gray-500">{review.meta}</div>
+                        </div>
+                      </div>
+                      <div className="text-sm text-yellow-400">{"★".repeat(review.stars)}<span className="text-gray-300">{"★".repeat(5 - review.stars)}</span></div>
+                    </div>
+                    <p className="mt-2 text-sm text-gray-600">{review.text}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
+
+          <aside className="relative lg:col-span-4">
+            <div className="sticky top-24 space-y-6">
+              <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-lg">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-gray-900">相談・指導を依頼</h3>
+                </div>
+                <div className="mb-6">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-bold text-gray-900">¥3,000</span>
+                    <span className="text-sm text-gray-500">/ 60分</span>
+                  </div>
+                  <p className="mt-1 text-xs font-medium text-green-600">初回相談は無料でお試し可能</p>
+                </div>
+
+                {sessionRole === "tutor" ? (
+                  <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">大学生アカウントでは依頼できません。</p>
+                ) : (
+                  <Link
+                    href={`/requests/new?tutorId=${tutor.id}`}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF8C66] px-4 py-3.5 font-bold text-white transition hover:bg-[#FF7A4D]"
+                  >
+                    相談を予約する
+                  </Link>
+                )}
+
+                <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50">
+                  メッセージを送る
+                </button>
+                <div className="mt-3">
+                  <ReportDialog
+                    reportType="user"
+                    targetUserId={tutor.id}
+                    triggerLabel="この先輩を通報する"
+                    triggerClassName="flex w-full items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 font-medium text-[#B91C1C] transition hover:bg-[#FDE8E8]"
+                  />
+                </div>
+
+                <div className="mt-6 border-t border-gray-100 pt-6">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">対応可能なタグ</div>
+                  <div className="flex flex-wrap gap-2">
+                    {tutor.theme ? (
+                      <>
+                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#法学</span>
+                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#志望理由書</span>
+                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#面接</span>
+                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#教育行政</span>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <div>
+                  <h4 className="mb-1 text-sm font-bold text-blue-800">安心・安全な取引</h4>
+                  <p className="text-xs leading-snug text-blue-700">
+                    本人確認済みユーザーのみが利用可能です。お支払いは運営がお預かりし、指導完了後に支払われます。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
-      </section>
+      </main>
     </div>
   );
 }

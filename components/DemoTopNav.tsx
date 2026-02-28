@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "../lib/supabase/client";
+import BrandLogo from "./BrandLogo";
 
 type Props = {
   active?: "status" | "none";
@@ -51,12 +52,9 @@ export default function DemoTopNav({ active = "none" }: Props) {
   return (
     <header className="rounded-3xl bg-white/95 shadow-sm border border-sand">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sand px-6 py-4">
-        <Link href="/demo" className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-accent text-white grid place-items-center font-bold">AO</div>
-          <p className="text-xl font-semibold text-ink">AO Match</p>
-        </Link>
+        <BrandLogo textClassName="text-xl font-semibold text-ink" />
         <div className="flex items-center gap-2 text-sm">
-          <Link href="/status" className={itemClass("status")}>取引管理</Link>
+          <Link href="/demo/request" className={itemClass("status")}>取引管理</Link>
           <div
             className="relative"
             onMouseEnter={() => setMenuOpen(true)}
@@ -80,10 +78,9 @@ export default function DemoTopNav({ active = "none" }: Props) {
             >
               <p className="text-sm font-semibold text-sea">{name}</p>
               <div className="mt-2 grid gap-2 text-sm text-sea/80">
-                <Link href="/profile/publications" className="hover:text-accent">プロフィール情報</Link>
-                <Link href="/profile/settings" className="hover:text-accent">設定</Link>
-                <Link href="/demo/request" className="hover:text-accent">アナライズ</Link>
-                <button onClick={logout} className="text-left hover:text-accent">ログアウト</button>
+                <Link href="/profile/settings" className="rounded-lg px-3 py-2 hover:bg-cloud hover:text-accent">アカウント</Link>
+                <Link href="/profile/settings?tab=manage" className="rounded-lg px-3 py-2 hover:bg-cloud hover:text-accent">設定</Link>
+                <button onClick={logout} className="rounded-lg px-3 py-2 text-left hover:bg-cloud hover:text-accent">ログアウト</button>
               </div>
             </div>
           </div>

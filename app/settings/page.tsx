@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getSupabaseClient } from "../../lib/supabase/client";
-import DemoTopNav from "../../components/DemoTopNav";
 
 export default function SettingsPage() {
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -118,7 +117,6 @@ export default function SettingsPage() {
 
   return (
     <div className="grid gap-8">
-      <DemoTopNav />
 
       <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
         <aside className="card p-6 text-sm text-sea/70">

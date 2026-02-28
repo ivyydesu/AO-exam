@@ -17,9 +17,7 @@ export default function StatusPage() {
         router.replace("/auth/login");
         return;
       }
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
-      if (profile?.role === "tutor") router.replace("/demo/request");
-      else router.replace("/student/status");
+      router.replace("/student/status");
     };
     run();
   }, [router]);

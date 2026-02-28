@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { sendLinePushMessage } from "../../../../lib/line";
+import { getNotificationSettingsForUser } from "../../../../lib/notificationSettings";
 
 type NotifyBody = {
   targetRole: "student" | "tutor";
@@ -38,6 +39,11 @@ export async function POST(req: NextRequest) {
 
     if (!profile.line_user_id) {
       return NextResponse.json({ error: "LINE not connected for target user" }, { status: 400 });
+    }
+
+    const notifySettings = await getNotificationSettingsForUser(supabaseAdmin, profile.id);
+    if (!notifySettings.line_enabled) {
+      return NextResponse.json({ error: "LINE notifications are disabled" }, { status: 400 });
     }
 
     const defaultMessages: Record<NotifyBody["eventType"], string> = {

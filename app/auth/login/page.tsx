@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 import AuthDevTools from "../../../components/AuthDevTools";
+import {
+  EMAIL_SEND_COOLDOWN_SECONDS,
+  getCooldownRemaining,
+  normalizeAuthErrorMessage,
+  startCooldown
+} from "../../../lib/auth/emailThrottle";
 
 const roles = [
   { value: "student", label: "高校生" },
@@ -31,6 +37,8 @@ function LoginPageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [resetCooldown, setResetCooldown] = useState(0);
 
   const getLandingPath = (currentRole: "student" | "tutor") => {
     if (currentRole === "tutor") return "/demo";
@@ -69,6 +77,19 @@ function LoginPageContent() {
     } catch {
       // ignore parse error
     }
+  }, []);
+
+  useEffect(() => {
+    setOtpCooldown(getCooldownRemaining("login-2fa", email));
+    setResetCooldown(getCooldownRemaining("reset-password", email));
+  }, [email]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setOtpCooldown((prev) => Math.max(0, prev - 1));
+      setResetCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
   }, []);
 
   const ensureRole = async (
@@ -131,6 +152,50 @@ function LoginPageContent() {
         throw new Error("メール認証が未完了です。先にメール内リンクを開いてください。");
       }
       await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
+
+      const { data: security } = await supabase
+        .from("notification_settings")
+        .select("email_2fa_enabled")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
+
+      if (security?.email_2fa_enabled) {
+        const cooldown = getCooldownRemaining("login-2fa", email);
+        if (cooldown <= 0) {
+          const { error: otpError } = await supabase.auth.signInWithOtp({
+            email,
+            options: {
+              shouldCreateUser: false,
+              emailRedirectTo: `${window.location.origin}/auth/2fa?role=${role}&email=${encodeURIComponent(email)}`
+            }
+          });
+          if (otpError) {
+            const normalized = normalizeAuthErrorMessage(otpError.message);
+            if (normalized.includes("メール送信")) {
+              router.push(
+                `/auth/2fa?role=${role}&email=${encodeURIComponent(email)}&remember=${remember ? "1" : "0"}&notice=${encodeURIComponent("直前に送信された認証コードを入力してください。")}`
+              );
+              return;
+            }
+            throw new Error(otpError.message);
+          }
+          startCooldown("login-2fa", email);
+        }
+        await supabase.auth.signOut();
+        if (remember) {
+          localStorage.setItem(
+            "ao_match_login_saved",
+            JSON.stringify({ email, password, role })
+          );
+        } else {
+          localStorage.removeItem("ao_match_login_saved");
+        }
+        router.push(
+          `/auth/2fa?role=${role}&email=${encodeURIComponent(email)}&remember=${remember ? "1" : "0"}&notice=${encodeURIComponent(cooldown > 0 ? "すでに送信済みの認証コードを入力してください。" : "認証コードをメールに送信しました。")}`
+        );
+        return;
+      }
+
       if (remember) {
         localStorage.setItem(
           "ao_match_login_saved",
@@ -141,7 +206,7 @@ function LoginPageContent() {
       }
       router.push(getLandingPath(role));
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to fetch";
+      const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
         setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
       } else {
@@ -159,6 +224,8 @@ function LoginPageContent() {
     try {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Supabaseが初期化されていません");
+      if (!email) throw new Error("メールアドレスを入力してください");
+      if (otpCooldown > 0) throw new Error(`再送まで${otpCooldown}秒お待ちください`);
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email,
         options: {
@@ -168,14 +235,40 @@ function LoginPageContent() {
       });
       if (otpError) throw new Error(otpError.message);
       setOtpSent(true);
+      startCooldown("login-2fa", email);
+      setOtpCooldown(EMAIL_SEND_COOLDOWN_SECONDS);
       setNotice("認証コードをメール送信しました。");
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to fetch";
+      const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
         setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
       } else {
         setError(message);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendResetEmail = async () => {
+    setError(null);
+    setNotice(null);
+    setLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabaseが初期化されていません");
+      if (!email) throw new Error("メールアドレスを入力してください");
+      if (resetCooldown > 0) throw new Error(`再送まで${resetCooldown}秒お待ちください`);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`
+      });
+      if (resetError) throw new Error(resetError.message);
+      startCooldown("reset-password", email);
+      setResetCooldown(EMAIL_SEND_COOLDOWN_SECONDS);
+      setNotice("パスワード再設定メールを送信しました。");
+    } catch (e) {
+      const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
+      setError(message.includes("Failed to fetch") ? "Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。" : message);
     } finally {
       setLoading(false);
     }
@@ -205,7 +298,7 @@ function LoginPageContent() {
       }
       router.push(getLandingPath(role));
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to fetch";
+      const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
         setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
       } else {
@@ -277,6 +370,9 @@ function LoginPageContent() {
                     Sign Up
                   </Link>
                 </div>
+                <button type="button" className="w-fit text-sm text-[#10B981] underline-offset-2 hover:underline disabled:opacity-50" onClick={sendResetEmail} disabled={loading || resetCooldown > 0}>
+                  {resetCooldown > 0 ? `再送まで${resetCooldown}s` : "パスワードを忘れた場合"}
+                </button>
               </form>
             )}
 
@@ -287,8 +383,8 @@ function LoginPageContent() {
                   <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </label>
                 <div className="flex items-center gap-3">
-                  <button className="btn btn-secondary" type="button" onClick={sendOtp} disabled={loading}>
-                    認証コード送信
+                  <button className="btn btn-secondary" type="button" onClick={sendOtp} disabled={loading || otpCooldown > 0}>
+                    {otpCooldown > 0 ? `再送まで${otpCooldown}s` : "認証コード送信"}
                   </button>
                   {otpSent && <span className="text-xs text-sea/70">送信済み</span>}
                 </div>

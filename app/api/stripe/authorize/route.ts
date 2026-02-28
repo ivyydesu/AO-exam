@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
+import { getAppModeFromRequest } from "../../../../lib/appMode";
 
 type AuthorizeBody = {
   requestId: string;
@@ -8,6 +9,8 @@ type AuthorizeBody = {
 
 export async function POST(req: NextRequest) {
   try {
+    const appMode = getAppModeFromRequest(req);
+    const allowTestBypass = process.env.NODE_ENV !== "production" || appMode === "test";
     const body = (await req.json()) as AuthorizeBody;
     const requestId = body.requestId;
 
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
       .eq("id", requestRow.tutor_id)
       .single();
 
-    if (tutorError || !tutorProfile?.stripe_account_id) {
+    if ((tutorError || !tutorProfile?.stripe_account_id) && !allowTestBypass) {
       return NextResponse.json(
         { error: "Seller Stripe connected account is missing" },
         { status: 400 }
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
       .eq("user_id", requestRow.tutor_id)
       .maybeSingle();
 
-    if (verification?.status !== "approved") {
+    if (verification?.status !== "approved" && !allowTestBypass) {
       return NextResponse.json(
         { error: "Tutor verification is not approved yet" },
         { status: 403 }
@@ -72,19 +75,24 @@ export async function POST(req: NextRequest) {
     const feePercent = Number(process.env.PLATFORM_FEE_PERCENT ?? 15);
     const applicationFeeAmount = Math.floor((amount * feePercent) / 100);
 
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
       amount,
       currency: "jpy",
       capture_method: "manual",
       automatic_payment_methods: { enabled: true },
-      transfer_data: {
-        destination: tutorProfile.stripe_account_id
-      },
-      application_fee_amount: applicationFeeAmount,
       metadata: {
         request_id: requestRow.id
       }
-    });
+    };
+
+    if (tutorProfile?.stripe_account_id) {
+      paymentIntentParams.transfer_data = {
+        destination: tutorProfile.stripe_account_id
+      };
+      paymentIntentParams.application_fee_amount = applicationFeeAmount;
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
     await supabaseAdmin
       .from("requests")

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
 import { sendLinePushMessage } from "../../../../../lib/line";
+import { getNotificationSettingsForUser } from "../../../../../lib/notificationSettings";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -60,13 +61,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         .maybeSingle();
 
       if (requester?.line_user_id) {
-        try {
-          await sendLinePushMessage(
-            requester.line_user_id,
-            `AO Match: 依頼が承認されました。\n${requestRow.title}\nカード与信に進んでください。`
-          );
-        } catch {
-          // 通知失敗は処理続行
+        const requesterSettings = await getNotificationSettingsForUser(
+          supabaseAdmin,
+          requestRow.requester_id
+        );
+        if (requesterSettings.line_enabled && requesterSettings.line_status_update) {
+          try {
+            await sendLinePushMessage(
+              requester.line_user_id,
+              `AO Match: 依頼が承認されました。\n${requestRow.title}\nカード与信に進んでください。`
+            );
+          } catch {
+            // 通知失敗は処理続行
+          }
         }
       }
 

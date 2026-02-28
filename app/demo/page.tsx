@@ -1,659 +1,450 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getClient, getVisitorId } from "../../lib/demoClient";
-import DemoTopNav from "../../components/DemoTopNav";
+import { useMemo, useState } from "react";
+import BrandLogo from "../../components/BrandLogo";
 
-const makeAvatar = (skin: string, hair: string) =>
-  `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 160 160">
-      <rect width="160" height="160" rx="24" fill="${skin}"/>
-      <circle cx="80" cy="70" r="36" fill="#F7D7C4"/>
-      <path d="M44 70c8-22 64-22 72 0v12H44z" fill="${hair}"/>
-      <circle cx="68" cy="72" r="4" fill="#333"/>
-      <circle cx="92" cy="72" r="4" fill="#333"/>
-      <path d="M68 92c8 8 16 8 24 0" stroke="#333" stroke-width="4" fill="none" stroke-linecap="round"/>
-    </svg>`
-  )}`;
+type Mentor = {
+  id: string;
+  name: string;
+  university: string;
+  department: string;
+  grade: string;
+  seminar: string;
+  theme: string;
+  tags: string[];
+  rating: number;
+  verified?: boolean;
+  experience: string;
+  avatar: string;
+};
 
-const demoTutors = [
+const mentors: Mentor[] = [
   {
-    id: "tutor-1",
-    name: "木戸洵成",
+    id: "t1",
+    name: "木戸 洵成",
     university: "成蹊大学",
     department: "法学部政治学科",
+    grade: "2年",
     seminar: "教育行政ゼミ",
-    year: "2年",
-    acceptedUniversities: ["成蹊大学 法学部政治学科"],
-    cramSchool: "早稲田塾",
-    theme: "教育行政といじめ問題について",
-    experience: "個人的なサポートで成蹊大学法学部に3名合格",
-    tags: ["法学", "志望理由書", "面接", "教育行政"],
+    theme:
+      "教育行政といじめ問題について。若者のボランティア参加の動機づけと継続性に関する研究。",
+    tags: ["#法学", "#志望理由書", "#面接", "#教育行政"],
     rating: 4.9,
-    reviews: 12,
+    verified: true,
+    experience: "指導経験: 個人3名",
     avatar: "/avatars/mentor.png"
   },
   {
-    id: "tutor-2",
+    id: "t2",
     name: "佐々木 颯太",
     university: "明治大学",
     department: "情報コミュニケーション学部",
+    grade: "3年",
     seminar: "メディア社会ゼミ",
-    year: "3年",
-    acceptedUniversities: ["明治大学 情報コミュニケーション学部", "東洋大学 社会学部"],
-    cramSchool: "河合塾",
-    theme: "地域コミュニティとSNSの関係",
-    experience: "個別相談で明治大・東洋大に2名合格",
-    tags: ["情報", "SNS", "活動実績", "面接"],
+    theme: "地域コミュニティとSNSの関係性。地方創生におけるデジタルマーケティングの活用。",
+    tags: ["#情報", "#SNS", "#活動実績"],
     rating: 4.7,
-    reviews: 9,
-    avatar: makeAvatar("#F9F1FF", "#2F2D3A")
+    experience: "指導経験: 個別相談2名",
+    avatar:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuCBE50PVQOkz4fFObFPkkPrvZngyK7YeTDq2WUHxlMbd3Gp4odjcxmRV-WQsbxy8-ukkxm2zpMJlm3o7mCD-HomvnUiF5vaaKhJpPNtYlP1E9Mv6_k0huKelsOpNKg3iv8f7FJOqiNnLZADQN-GXpXTzgaZwTC3SsC3dlHXrHCZHEDRyig-b6NX_rMOwfD9_-Jc6l2LoxwdaaefqNzOwDoFrVtSzb5ZMlEq3WVsS9UThuhMzooBrUokOndTqnrbZZEz57qf14GZDIo"
   },
   {
-    id: "tutor-3",
+    id: "t3",
     name: "田中 みさき",
     university: "立教大学",
     department: "社会学部",
+    grade: "2年",
     seminar: "地域社会研究ゼミ",
-    year: "2年",
-    acceptedUniversities: ["立教大学 社会学部"],
-    cramSchool: "栄光ゼミナール",
-    theme: "若者のボランティア参加の動機",
-    experience: "志望理由書の添削で立教に1名合格",
-    tags: ["社会学", "志望理由書", "ボランティア"],
+    theme: "若者のボランティア参加の動機。サードプレイスとしての子供食堂の役割。",
+    tags: ["#社会学", "#ボランティア", "#志望理由書"],
     rating: 4.8,
-    reviews: 6,
-    avatar: makeAvatar("#FFF5E8", "#5B3A29")
+    experience: "指導経験: 添削1名",
+    avatar:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuA4pJ18C66-FncNSlBMnspkB895TfqyJJuhVsd_7mJjC4NC6KgJXxUBsNxyo3RD4QKoPgQe4PJw-DMvT6Jeft0ZNAAyKLgA6bVcChiV-WL3O9ynDOtZ2_ShvwSoaWU2BQlTazcmmoFAcFY6B0CTz9Lg_V26IMqe1uMav7RbRwBffEsAaRtM39FYfMA9StqySxfmdW8GFrmwAylbnx4YFKrbTxqJ0zjPqwelgMXx76VDAXUgs4AOnPZboSWVCMBSLCh7je8V2yqfWe8"
   },
   {
-    id: "tutor-4",
+    id: "t4",
     name: "小林 航",
     university: "中央大学",
     department: "法学部",
+    grade: "4年",
     seminar: "政治過程ゼミ",
-    year: "4年",
-    acceptedUniversities: ["中央大学 法学部", "日本大学 法学部"],
-    cramSchool: "早稲田塾",
-    theme: "若者の投票行動の変化",
-    experience: "面接対策で中央大に2名合格",
-    tags: ["法学", "面接", "政治"],
+    theme: "若者の投票行動の変化とインターネット選挙運動の影響について。",
+    tags: ["#法学", "#面接", "#政治"],
     rating: 4.6,
-    reviews: 5,
-    avatar: makeAvatar("#E8FFF4", "#1F3A2B")
+    experience: "指導経験: 面接対策2名",
+    avatar:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuBX1sHwJPQ7XU-lqXxy9Ygsgq_5F5y6_dlHQdunM3THXZ9c_GpINSIWi4ttshYbXvNISMDM47zS-_XMKmXmGck77tta24-z576BK0Kq2lTwNWCCGPz1wUN0ZucKMSF5Y8Y9l6f8CzC6LzanG83Eqo3e_DOpv2uDHkBW9U23qD8D5xOXI2FBUq8qN766tdg_5Bgg4jrg2JxZKrtm4fzsZQHsy_D0Yhr20BJyCPRiHTrnhZvHBMvKIua0XtaA6ykectSPvhwrNUsaOTA"
   },
   {
-    id: "tutor-5",
-    name: "山本 葵",
+    id: "t5",
+    name: "中村 美咲",
     university: "青山学院大学",
     department: "教育人間科学部",
-    seminar: "教育工学ゼミ",
-    year: "1年",
-    acceptedUniversities: ["青山学院大学 教育人間科学部"],
-    cramSchool: "SAPIX",
-    theme: "教育現場のICT活用",
-    experience: "活動実績整理で青学に1名合格",
-    tags: ["教育", "ICT", "活動実績"],
-    rating: 4.5,
-    reviews: 4,
-    avatar: makeAvatar("#EAF4FF", "#2A3E6B")
+    grade: "3年",
+    seminar: "教育政策ゼミ",
+    theme: "地方自治体の教育政策と不登校支援の実効性。",
+    tags: ["#教育行政", "#志望理由書", "#面接"],
+    rating: 4.8,
+    verified: true,
+    experience: "指導経験: 合格サポート2名",
+    avatar:
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500&q=80&auto=format&fit=crop"
   },
   {
-    id: "tutor-6",
-    name: "鈴木 海斗",
+    id: "t6",
+    name: "山口 蓮",
+    university: "慶應義塾大学",
+    department: "総合政策学部",
+    grade: "4年",
+    seminar: "地域政策ゼミ",
+    theme: "地域活性化と若者起業のエコシステム構築。",
+    tags: ["#経営", "#リーダーシップ", "#活動実績"],
+    rating: 4.9,
+    verified: true,
+    experience: "指導経験: 面談サポート5名",
+    avatar:
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=500&q=80&auto=format&fit=crop"
+  },
+  {
+    id: "t7",
+    name: "松本 あかり",
+    university: "上智大学",
+    department: "総合人間科学部",
+    grade: "2年",
+    seminar: "国際教育ゼミ",
+    theme: "多文化共生教育における学校現場の課題分析。",
+    tags: ["#社会学", "#ボランティア", "#英語面接"],
+    rating: 4.7,
+    experience: "指導経験: 書類添削3名",
+    avatar:
+      "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=500&q=80&auto=format&fit=crop"
+  },
+  {
+    id: "t8",
+    name: "石田 大輝",
     university: "法政大学",
     department: "経営学部",
-    seminar: "組織マネジメントゼミ",
-    year: "3年",
-    acceptedUniversities: ["法政大学 経営学部", "専修大学 経営学部"],
-    cramSchool: "東進ハイスクール",
-    theme: "部活動とリーダーシップ形成",
-    experience: "志望理由書の改善で法政に1名合格",
-    tags: ["経営", "リーダーシップ", "志望理由書"],
-    rating: 4.4,
-    reviews: 3,
-    avatar: makeAvatar("#FFF0F1", "#3A2A2A")
-  },
-  {
-    id: "tutor-7",
-    name: "石井 玲奈",
-    university: "日本大学",
-    department: "文理学部",
-    seminar: "探究学習設計ゼミ",
-    year: "2年",
-    acceptedUniversities: ["日本大学 文理学部"],
-    cramSchool: "個別教室のトライ",
-    theme: "探究学習における問いの立て方",
-    experience: "面接練習で日大に1名合格",
-    tags: ["文理", "探究", "面接"],
-    rating: 4.3,
-    reviews: 2,
-    avatar: makeAvatar("#F3FFF0", "#2C3A23")
+    grade: "3年",
+    seminar: "マーケティング戦略ゼミ",
+    theme: "SNS発信が高校生の進路選択に与える影響。",
+    tags: ["#SNSマーケティング", "#ICT", "#経営"],
+    rating: 4.6,
+    experience: "指導経験: 相談対応4名",
+    avatar:
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&q=80&auto=format&fit=crop"
   }
 ];
 
-type TutorRecord = typeof demoTutors[number];
+const popularTags = [
+  { label: "#ICT", cls: "bg-blue-50 text-blue-600" },
+  { label: "#SNSマーケティング", cls: "bg-pink-50 text-pink-600" },
+  { label: "#ボランティア", cls: "bg-green-50 text-green-600" },
+  { label: "#リーダーシップ", cls: "bg-purple-50 text-purple-600" },
+  { label: "#教育格差", cls: "bg-orange-50 text-orange-600" },
+  { label: "#経営", cls: "bg-gray-100 text-gray-600" },
+  { label: "#志望理由書", cls: "bg-gray-100 text-gray-600" },
+  { label: "#社会学", cls: "bg-gray-100 text-gray-600" }
+];
 
-type BoardPost = {
-  id: string;
-  author: string;
-  body: string;
-  createdAt: string;
-  tags: string[];
-};
+const heroImages = [
+  "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=1200&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1571260899304-425eee4c7efc?w=1200&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1519452575417-564c1401ecc0?w=1200&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?w=1200&q=80&auto=format&fit=crop"
+];
+
+const heroDurations = [35, 45, 50, 40];
 
 export default function DemoPage() {
-  const [tutors, setTutors] = useState<TutorRecord[]>(demoTutors);
-  const [visitorId, setVisitorId] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterSeminar, setFilterSeminar] = useState("");
-  const [filterUniversityDept, setFilterUniversityDept] = useState("");
-  const [searchGrade, setSearchGrade] = useState("");
-  const [selectedTutorTags, setSelectedTutorTags] = useState<string[]>([]);
-  const [aiThemeQuery, setAiThemeQuery] = useState("");
-  const [aiPickedIds, setAiPickedIds] = useState<string[]>([]);
-  const [boardPosts, setBoardPosts] = useState<BoardPost[]>([]);
-  const [boardText, setBoardText] = useState("");
-  const [boardTagsInput, setBoardTagsInput] = useState("");
-  const [selectedBoardTags, setSelectedBoardTags] = useState<string[]>([]);
+  const [keyword, setKeyword] = useState("");
+  const [seminar, setSeminar] = useState("");
+  const [school, setSchool] = useState("");
+  const [grade, setGrade] = useState("指定なし");
+  const [sort, setSort] = useState("おすすめ順");
+  const [selectedTag, setSelectedTag] = useState<string>("");
+  const [visibleCount, setVisibleCount] = useState(4);
 
-  useEffect(() => {
-    const supabase = getClient();
-    if (!supabase) return;
-    const id = getVisitorId();
-    setVisitorId(id);
-    const load = async () => {
-      const { data: tutorData } = await supabase.from("demo_tutors").select("*");
-      if (tutorData && tutorData.length > 0) {
-        const avatarMap = Object.fromEntries(demoTutors.map((t) => [t.id, t.avatar]));
-        setTutors(
-          tutorData.map((t) => ({
-            ...t,
-            year: t.year ?? "2年",
-            seminar: "未設定",
-            acceptedUniversities: t.accepted_universities ?? [],
-            cramSchool: t.cram_school ?? "なし",
-            theme: t.theme ?? "",
-            experience: t.experience ?? "",
-            tags: Array.isArray(t.specialties) ? t.specialties : [],
-            avatar: t.avatar_url || avatarMap[t.id] || avatarMap["tutor-1"]
-          }))
-        );
-      }
 
-      try {
-        const res = await fetch("/api/tutors/search");
-        const payload = await res.json();
-        if (res.ok && Array.isArray(payload.items) && payload.items.length > 0) {
-          const publishedTutors = payload.items.map(
-            (item: {
-              id: string;
-              name: string;
-              university: string;
-              department: string;
-              seminar: string;
-              grade: string;
-              school: string;
-              avatar: string;
-              researchTheme: string;
-              coachingExperience: string;
-            }) => ({
-              id: item.id,
-              name: item.name,
-              university: item.university || "",
-              department: item.department || "",
-              seminar: item.seminar || "",
-              year: item.grade || "",
-              acceptedUniversities: item.school ? [item.school] : [],
-              cramSchool: "未設定",
-              theme: item.researchTheme || "",
-              experience: item.coachingExperience || "",
-              tags: [],
-              rating: 5,
-              reviews: 0,
-              avatar: item.avatar || makeAvatar("#E6F0FF", "#2B3A67")
-            })
-          );
-          setTutors((prev) => {
-            const merged = [...prev];
-            for (const t of publishedTutors) {
-              const index = merged.findIndex((p) => p.id === t.id);
-              if (index >= 0) merged[index] = { ...merged[index], ...t };
-              else merged.push(t);
-            }
-            return merged;
-          });
-        }
-      } catch {
-        // ignore
-      }
-    };
-    load();
+  const filtered = useMemo(() => {
+    const q = keyword.toLowerCase();
+    const s = seminar.toLowerCase();
+    const u = school.toLowerCase();
 
-    const stored = window.localStorage.getItem("demo-board");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as BoardPost[];
-        setBoardPosts(
-          parsed.map((post) => ({
-            ...post,
-            tags: Array.isArray(post.tags) ? post.tags : []
-          }))
-        );
-      } catch {
-        setBoardPosts([]);
-      }
-    }
-  }, []);
-
-  const allTutorTags = useMemo(
-    () => Array.from(new Set(tutors.flatMap((tutor) => tutor.tags ?? []))).sort((a, b) => a.localeCompare(b, "ja")),
-    [tutors]
-  );
-
-  const toggleTutorTag = (tag: string) => {
-    setSelectedTutorTags((prev) =>
-      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]
-    );
-  };
-
-  const filteredTutors = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const seminar = filterSeminar.trim().toLowerCase();
-    const uniDept = filterUniversityDept.trim().toLowerCase();
-    const grade = searchGrade.trim().toLowerCase();
-    return tutors.filter((tutor) => {
-      const baseText = [
-        tutor.name,
-        tutor.university,
-        tutor.department,
-        tutor.seminar ?? "",
-        tutor.theme ?? "",
-        ...(tutor.tags ?? [])
-      ]
-        .join(" ")
-        .toLowerCase();
-      const matchQuery = !query || baseText.includes(query);
-      const matchSeminar = !seminar || (tutor.seminar ?? "").toLowerCase().includes(seminar);
-      const matchUniDept =
-        !uniDept || `${tutor.university} ${tutor.department}`.toLowerCase().includes(uniDept);
-      const matchGrade = !grade || (tutor.year ?? "").toLowerCase() === grade;
-      const matchTags =
-        selectedTutorTags.length === 0 ||
-        selectedTutorTags.every((tag) => (tutor.tags ?? []).includes(tag));
-      return matchQuery && matchSeminar && matchUniDept && matchGrade && matchTags;
+    const base = mentors.filter((m) => {
+      const text = `${m.name} ${m.university} ${m.department} ${m.seminar} ${m.theme} ${m.tags.join(" ")}`.toLowerCase();
+      const k = !q || text.includes(q);
+      const se = !s || m.seminar.toLowerCase().includes(s);
+      const sc = !u || `${m.university} ${m.department}`.toLowerCase().includes(u);
+      const g = grade === "指定なし" || m.grade === grade;
+      const t = !selectedTag || m.tags.includes(selectedTag);
+      return k && se && sc && g && t;
     });
-  }, [tutors, searchQuery, filterSeminar, filterUniversityDept, searchGrade, selectedTutorTags]);
 
-  const recommended = useMemo(() => {
-    if (aiPickedIds.length > 0) {
-      return filteredTutors
-        .filter((t) => aiPickedIds.includes(t.id))
-        .sort((a, b) => aiPickedIds.indexOf(a.id) - aiPickedIds.indexOf(b.id))
-        .slice(0, 3);
-    }
-    return [...filteredTutors].sort((a, b) => b.rating - a.rating).slice(0, 3);
-  }, [filteredTutors, aiPickedIds]);
-
-  const normalizeTags = (input: string) => {
-    const values = input
-      .split(/[,、\s]+/)
-      .map((tag) => tag.trim().replace(/^#/, ""))
-      .filter(Boolean);
-    return Array.from(new Set(values));
-  };
-
-  const addPost = () => {
-    if (!boardText.trim()) return;
-    const tags = normalizeTags(boardTagsInput);
-    const next: BoardPost = {
-      id: crypto.randomUUID(),
-      author: "高校生",
-      body: boardText.trim(),
-      createdAt: new Date().toISOString(),
-      tags
-    };
-    const updated = [next, ...boardPosts].slice(0, 20);
-    setBoardPosts(updated);
-    window.localStorage.setItem("demo-board", JSON.stringify(updated));
-    setBoardText("");
-    setBoardTagsInput("");
-  };
-
-  const allBoardTags = useMemo(
-    () => Array.from(new Set(boardPosts.flatMap((post) => post.tags))).sort((a, b) => a.localeCompare(b, "ja")),
-    [boardPosts]
-  );
-
-  const visibleBoardPosts = useMemo(() => {
-    if (selectedBoardTags.length === 0) return boardPosts;
-    return boardPosts.filter((post) =>
-      selectedBoardTags.every((tag) => post.tags.includes(tag))
-    );
-  }, [boardPosts, selectedBoardTags]);
-
-  const toggleBoardTag = (tag: string) => {
-    setSelectedBoardTags((prev) =>
-      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]
-    );
-  };
-
-  const searchTutorsByApi = async () => {
-    const params = new URLSearchParams();
-    if (filterUniversityDept.trim()) params.set("university", filterUniversityDept.trim());
-    if (filterSeminar.trim()) params.set("seminar", filterSeminar.trim());
-    if (searchGrade.trim()) params.set("grade", searchGrade.trim());
-
-    try {
-      const res = await fetch(`/api/tutors/search?${params.toString()}`);
-      const payload = await res.json();
-      if (!res.ok) return;
-      const items = (payload.items ?? []).map((item: {
-        id: string;
-        name: string;
-        university: string;
-        department: string;
-        grade: string;
-        seminar: string;
-        school: string;
-        avatar: string;
-        researchTheme: string;
-        coachingExperience: string;
-      }) => ({
-        id: item.id,
-        name: item.name,
-        university: item.university,
-        department: item.department,
-        seminar: item.seminar || "",
-        year: item.grade || "",
-        acceptedUniversities: item.school ? [item.school] : [],
-        cramSchool: "未設定",
-        theme: item.researchTheme || "",
-        experience: item.coachingExperience || "",
-        tags: [],
-        rating: 5,
-        reviews: 0,
-        avatar: item.avatar || makeAvatar("#E6F0FF", "#2B3A67")
-      }));
-      if (items.length > 0) setTutors(items);
-    } catch {
-      // Ignore API error and keep current list
-    }
-  };
-
-  const runAiRecommendation = () => {
-    const prompt = aiThemeQuery.trim().toLowerCase();
-    if (!prompt) {
-      setAiPickedIds([]);
-      return;
-    }
-    const keywords = prompt.split(/[\s、,]+/).filter(Boolean);
-    const scored = tutors
-      .map((tutor) => {
-        const text = [
-          tutor.theme ?? "",
-          tutor.experience ?? "",
-          tutor.seminar ?? "",
-          ...(tutor.tags ?? [])
-        ]
-          .join(" ")
-          .toLowerCase();
-        const matchCount = keywords.reduce((acc, kw) => (text.includes(kw) ? acc + 1 : acc), 0);
-        const score = matchCount * 10 + tutor.rating;
-        return { id: tutor.id, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
-    setAiPickedIds(scored.map((s) => s.id));
-  };
+    if (sort === "評価が高い順" || sort === "おすすめ順") return [...base].sort((a, b) => b.rating - a.rating);
+    return base;
+  }, [keyword, seminar, school, grade, sort, selectedTag]);
+  const visibleMentors = filtered.slice(0, visibleCount);
 
   return (
-    <div className="grid gap-8">
-      <DemoTopNav />
+    <div className="relative left-1/2 w-dvw max-w-[100dvw] -translate-x-1/2 overflow-x-hidden">
+    <div className="min-h-screen bg-[#f8fafc] font-body text-[#334155]">
 
-      <section className="card p-5 grid gap-3">
-        <p className="text-sm text-sea/60">絞り込み検索（1行）</p>
-        <div className="grid gap-2 md:grid-cols-[1.2fr_1fr_180px_120px]">
-          <input
-            className="input"
-            placeholder="キーワード（先輩名・タグ・大学など）"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="ゼミ（例: 教育行政ゼミ）"
-            value={filterSeminar}
-            onChange={(e) => setFilterSeminar(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="大学/学部"
-            value={filterUniversityDept}
-            onChange={(e) => setFilterUniversityDept(e.target.value)}
-          />
-          <select className="input" value={searchGrade} onChange={(e) => setSearchGrade(e.target.value)}>
-            <option value="">学年</option>
-            <option value="1年">1年</option>
-            <option value="2年">2年</option>
-            <option value="3年">3年</option>
-            <option value="4年">4年</option>
-          </select>
-        </div>
-        <div className="flex gap-2">
-          <button className="btn btn-secondary" type="button" onClick={searchTutorsByApi}>
-            検索APIで絞り込み
-          </button>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={() => {
-              setSearchQuery("");
-              setFilterSeminar("");
-              setFilterUniversityDept("");
-              setSearchGrade("");
-              setSelectedTutorTags([]);
-              setAiPickedIds([]);
-            }}
-          >
-            条件クリア
-          </button>
-        </div>
-      </section>
-
-      <section className="card p-5 grid gap-3">
-        <p className="text-sm text-sea/60">探究テーマAIおすすめ</p>
-        <div className="flex flex-wrap gap-2">
-          <input
-            className="input flex-1 min-w-[240px]"
-            placeholder="探究テーマを入力（例: 教育行政 いじめ問題）"
-            value={aiThemeQuery}
-            onChange={(e) => setAiThemeQuery(e.target.value)}
-          />
-          <button className="btn btn-primary" type="button" onClick={runAiRecommendation}>
-            AIおすすめをピックアップ
-          </button>
-          {aiPickedIds.length > 0 && (
-            <button className="btn btn-secondary" type="button" onClick={() => setAiPickedIds([])}>
-              AIおすすめ解除
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className="card p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-sea/60">先輩タグで一括検索</span>
-          {allTutorTags.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => toggleTutorTag(tag)}
-              className={`rounded-full px-3 py-1 text-xs border ${
-                selectedTutorTags.includes(tag)
-                  ? "bg-accent text-white border-accent"
-                  : "bg-white text-sea/70 border-sand"
-              }`}
-            >
-              #{tag}
-            </button>
-          ))}
-          {selectedTutorTags.length > 0 && (
-            <button
-              type="button"
-              className="rounded-full px-3 py-1 text-xs border border-sand text-sea/70"
-              onClick={() => setSelectedTutorTags([])}
-            >
-              クリア
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className="card p-6 grid gap-4">
-        <h2 className="text-lg font-semibold text-sea">
-          {aiPickedIds.length > 0 ? "AIおすすめの先輩" : "おすすめの先輩"}
-        </h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          {recommended.map((tutor) => (
-            <div key={tutor.id} className="rounded-2xl border border-sand bg-white p-4 shadow-sm card-hover">
-              <div className="flex items-center gap-3">
-                <img className="h-14 w-14 rounded-2xl object-cover" src={tutor.avatar} alt={tutor.name} />
-                <div>
-                  <p className="text-sm font-semibold text-sea">{tutor.name}</p>
-                  <p className="text-xs text-sea/60">{tutor.university} / {tutor.department} {tutor.year}</p>
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-sea/60">合格校: {tutor.acceptedUniversities.join(" / ")}</p>
-              <p className="text-xs text-sea/60">ゼミ: {tutor.seminar || "未設定"}</p>
-              <p className="text-xs text-sea/60">探究テーマ: {tutor.theme}</p>
-              <div className="mt-2 flex items-center justify-between text-xs text-sea/70">
-                <span>★ {tutor.rating}（{tutor.reviews}）</span>
-                <Link className="text-accent" href={`/service/${tutor.id}`}>詳細</Link>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="card p-6 grid gap-4">
-        <h2 className="text-lg font-semibold text-sea">先輩プロフィール一覧</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          {filteredTutors.map((tutor) => (
-            <div key={tutor.id} className="rounded-2xl border border-sand bg-white p-4 shadow-sm card-hover">
-              <div className="flex items-center gap-3">
-                <img className="h-16 w-16 rounded-2xl object-cover" src={tutor.avatar} alt={tutor.name} />
-                <div>
-                  <p className="text-base font-semibold text-ink">{tutor.name}</p>
-                  <p className="text-xs text-sea/60">{tutor.university} / {tutor.department} {tutor.year}</p>
-                  <p className="text-xs text-sea/60">ゼミ: {tutor.seminar || "未設定"}</p>
-                  <p className="text-xs text-sea/60">合格校: {tutor.acceptedUniversities.join(" / ")}</p>
-                </div>
-              </div>
-              <div className="mt-2 text-xs text-sea/60">
-                <p>探究テーマ: {tutor.theme}</p>
-                <p>指導経験: {tutor.experience}</p>
-              </div>
-              {(tutor.tags ?? []).length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {tutor.tags.map((tag) => (
-                    <button
-                      key={`${tutor.id}-${tag}`}
-                      type="button"
-                      onClick={() => toggleTutorTag(tag)}
-                      className="rounded-full border border-sand px-2 py-0.5 text-[11px] text-sea/70"
-                    >
-                      #{tag}
-                    </button>
+      <div className="relative overflow-hidden border-b border-gray-100 bg-white">
+        <div className="hero-background-wrapper absolute inset-0 z-0">
+          <div className="hero-image-columns">
+            {heroDurations.map((duration, columnIndex) => (
+              <div key={`hero-col-${duration}`} className="hero-image-column">
+                <div className="hero-image-track" style={{ animationDuration: `${duration}s` }}>
+                  {[...heroImages, ...heroImages].map((src, imageIndex) => (
+                    <div key={`hero-img-${columnIndex}-${imageIndex}`} className="hero-image-card">
+                      <img src={src} alt="university life" />
+                    </div>
                   ))}
                 </div>
-              )}
-              <div className="mt-3 flex items-center justify-between text-xs text-sea/70">
-                <span>★ {tutor.rating}（{tutor.reviews}）</span>
-                <Link className="text-accent" href={`/service/${tutor.id}`}>詳細</Link>
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="card p-6 grid gap-4">
-        <h2 className="text-lg font-semibold text-sea">先輩の掲示板</h2>
-        <p className="text-sm text-sea/60">応援メッセージや、どんな対策をしたかを自由に投稿できます。</p>
-        <div className="grid gap-2">
-          <div className="flex gap-2">
-            <input
-              className="input flex-1"
-              placeholder="応援メッセージや体験談を投稿..."
-              value={boardText}
-              onChange={(e) => setBoardText(e.target.value)}
-            />
-            <button className="btn btn-primary" onClick={addPost}>投稿</button>
-          </div>
-          <input
-            className="input"
-            placeholder="タグを入力（例: 志望理由書, 面接, 成蹊）"
-            value={boardTagsInput}
-            onChange={(e) => setBoardTagsInput(e.target.value)}
-          />
-        </div>
-        <div className="rounded-xl border border-sand p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-sea/60">タグで一括検索</span>
-            {allBoardTags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleBoardTag(tag)}
-                className={`rounded-full px-3 py-1 text-xs border ${
-                  selectedBoardTags.includes(tag)
-                    ? "bg-accent text-white border-accent"
-                    : "bg-white text-sea/70 border-sand"
-                }`}
-              >
-                #{tag}
-              </button>
             ))}
-            {selectedBoardTags.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedBoardTags([])}
-                className="rounded-full px-3 py-1 text-xs border border-sand text-sea/70"
-              >
-                クリア
-              </button>
-            )}
+          </div>
+          <div className="hero-glass-overlay" />
+        </div>
+
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
+          <div className="mx-auto mb-10 max-w-3xl text-center">
+            <h1 className="hero-headline mb-4 text-4xl font-bold leading-tight text-white md:text-6xl">
+              大学生に聞こう。
+            </h1>
+            <p className="hero-subcopy text-lg text-white/95">志望校の現役生が、あなたのAO入試・探究活動をマンツーマンでサポートします。</p>
+          </div>
+
+          <div className="relative mx-auto max-w-4xl">
+            <div className="hero-sticker">一歩先ゆく先輩に気軽に相談</div>
+            <div className="hero-search-shell p-6 md:p-8">
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-[#10b981]">✨</span>
+                <span className="text-sm font-bold uppercase tracking-wider text-gray-800">AI Recommendation</span>
+              </div>
+              <div className="flex flex-col gap-4 md:flex-row">
+                <input
+                  className="flex-1 rounded-xl border-gray-200 bg-white/90 px-5 py-4 text-base text-gray-900 placeholder-gray-400 shadow-sm focus:border-[#10b981] focus:ring-[#10b981]"
+                  placeholder="探究テーマを入力（例：教育行政 いじめ問題、地域の活性化など）"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  type="text"
+                />
+                <button className="group flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#10b981] px-8 py-4 font-bold text-white shadow-lg shadow-[#10b981]/30 transition-all hover:bg-[#059669]">
+                  AIでおすすめを検索
+                  <span className="transition-transform group-hover:translate-x-1">→</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="grid gap-3">
-          {visibleBoardPosts.map((post) => (
-            <div key={post.id} className="rounded-xl border border-sand bg-white p-3">
-              <div className="flex items-center justify-between text-xs text-sea/60">
-                <span>{post.author}</span>
-                <span>{new Date(post.createdAt).toLocaleDateString()}</span>
-              </div>
-              {post.tags.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {post.tags.map((tag) => (
-                    <button
-                      key={`${post.id}-${tag}`}
-                      type="button"
-                      className="rounded-full border border-sand px-2 py-0.5 text-[11px] text-sea/70"
-                      onClick={() => toggleBoardTag(tag)}
-                    >
-                      #{tag}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="mt-2 text-sm text-sea/80">{post.body}</p>
-            </div>
-          ))}
-          {visibleBoardPosts.length === 0 && <p className="text-sm text-sea/60">該当する投稿はありません。</p>}
-        </div>
-      </section>
+      </div>
 
-      <section className="text-xs text-sea/50">Visitor: {visitorId}</section>
+      <main className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-8 lg:flex-row">
+          <aside className="space-y-6 lg:w-1/4">
+            <div className="sticky top-24 rounded-2xl border border-gray-100 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+              <div className="mb-6 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">絞り込み検索</h3>
+                <button
+                  className="text-xs text-gray-500 transition-colors hover:text-[#10b981]"
+                  onClick={() => {
+                    setKeyword("");
+                    setSeminar("");
+                    setSchool("");
+                    setGrade("指定なし");
+                    setSelectedTag("");
+                    setVisibleCount(4);
+                  }}
+                >
+                  クリア
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">キーワード</label>
+                  <input className="w-full rounded-lg border-gray-200 bg-gray-50 text-sm" placeholder="先輩名・タグ・大学など" value={keyword} onChange={(e) => setKeyword(e.target.value)} type="text" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">ゼミ</label>
+                  <input className="w-full rounded-lg border-gray-200 bg-gray-50 text-sm" placeholder="例: 教育行政ゼミ" value={seminar} onChange={(e) => setSeminar(e.target.value)} type="text" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">大学/学部</label>
+                    <input className="w-full rounded-lg border-gray-200 bg-gray-50 text-sm" placeholder="大学名" value={school} onChange={(e) => setSchool(e.target.value)} type="text" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">学年</label>
+                    <select className="w-full rounded-lg border-gray-200 bg-gray-50 text-sm" value={grade} onChange={(e) => setGrade(e.target.value)}>
+                      <option>指定なし</option>
+                      <option>1年</option>
+                      <option>2年</option>
+                      <option>3年</option>
+                      <option>4年</option>
+                    </select>
+                  </div>
+                </div>
+                <a href="#mentors-section" className="mt-4 block w-full rounded-xl border-2 border-[#10b981] bg-white py-2.5 text-center font-bold text-[#10b981] transition-colors hover:bg-[#10b981] hover:text-white">
+                  この条件で検索
+                </a>
+              </div>
+            </div>
+          </aside>
+
+          <div id="mentors-section" className="lg:w-3/4 scroll-mt-28">
+            <div className="mb-8">
+              <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-800">
+                <span className="text-pink-400">📈</span>
+                人気タグで探す
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition-colors hover:opacity-85 ${selectedTag === "" ? "bg-[#10b981] text-white" : "bg-gray-100 text-gray-600"}`}
+                  onClick={() => {
+                    setSelectedTag("");
+                    setVisibleCount(4);
+                  }}
+                >
+                  すべて
+                </button>
+                {popularTags.map((tag) => (
+                  <button
+                    key={tag.label}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition-colors hover:opacity-85 ${selectedTag === tag.label ? "bg-[#10b981] text-white" : tag.cls}`}
+                    onClick={() => {
+                      setSelectedTag(tag.label);
+                      setVisibleCount(4);
+                    }}
+                  >
+                    {tag.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">おすすめの先輩</h2>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">並び替え:</span>
+                <select className="cursor-pointer border-none bg-transparent text-sm font-medium text-gray-700 focus:ring-0" value={sort} onChange={(e) => setSort(e.target.value)}>
+                  <option>おすすめ順</option>
+                  <option>新着順</option>
+                  <option>評価が高い順</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {visibleMentors.map((mentor) => (
+                <article key={mentor.id} className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05),0_4px_6px_-2px_rgba(0,0,0,0.025)] transition-all duration-300 hover:shadow-xl">
+                  <div className="mb-4 flex items-start gap-4">
+                    <div className="relative shrink-0">
+                      <img alt="Mentor Profile" className="h-20 w-20 rounded-2xl object-cover shadow-md transition-transform duration-300 group-hover:scale-105" src={mentor.avatar} />
+                      <div className="absolute -bottom-2 -right-2 flex items-center gap-0.5 rounded-lg border border-gray-100 bg-white px-1.5 py-0.5 shadow-sm">
+                        <span className="text-xs text-yellow-400">★</span>
+                        <span className="text-xs font-bold text-gray-800">{mentor.rating}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                        {mentor.name}
+                        {mentor.verified ? <span className="rounded-full bg-[#10b981]/10 px-2 py-0.5 text-xs font-normal text-[#10b981]">本人確認済</span> : null}
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500">{mentor.university} / {mentor.department} {mentor.grade}</p>
+                      <div className="mt-2 text-xs text-gray-500">
+                        <span className="font-medium text-gray-700">ゼミ:</span> {mentor.seminar}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <div className="mb-1 text-xs text-gray-500">探究テーマ</div>
+                    <p className="text-sm font-medium text-gray-800">{mentor.theme}</p>
+                  </div>
+
+                  <div className="mb-6 flex flex-wrap gap-2">
+                    {mentor.tags.map((tag) => (
+                      <button
+                        key={`${mentor.id}-${tag}`}
+                        className={`rounded-md border px-2.5 py-1 text-xs ${selectedTag === tag ? "border-[#10b981] bg-[#10b981]/10 text-[#10b981]" : "border-gray-200 bg-gray-100 text-gray-600"}`}
+                        onClick={() => {
+                          setSelectedTag(tag);
+                          setVisibleCount(4);
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between border-t border-gray-100 pt-4">
+                    <div className="text-xs text-gray-500">{mentor.experience}</div>
+                    <Link href={`/service/${mentor.id}`} className="flex items-center gap-1 text-sm font-bold text-[#10b981] transition-colors hover:text-[#059669] hover:underline">
+                      詳細を見る <span>→</span>
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="mt-12 text-center">
+              <button
+                className="rounded-xl border border-gray-200 bg-white px-8 py-3 font-bold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setVisibleCount((prev) => prev + 4)}
+                disabled={visibleCount >= filtered.length}
+              >
+                もっと見る
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <footer id="about-section" className="mt-12 border-t border-gray-100 bg-white py-12">
+        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
+            <div>
+              <div className="mb-4">
+                <BrandLogo size="sm" textClassName="text-lg font-bold text-gray-900" />
+              </div>
+              <p className="text-sm text-gray-500">
+                先輩とつながる、未来が広がる。<br />
+                高校生のためのメンターマッチングサービス。
+              </p>
+            </div>
+            <div>
+              <h4 className="mb-4 font-bold text-gray-900">サービス</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li><a className="hover:text-[#10b981]" href="/search">先輩を探す</a></li>
+                <li><a className="hover:text-[#10b981]" href="/guide">ご利用ガイド</a></li>
+                <li><a className="hover:text-[#10b981]" href="/pricing">料金プラン</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="mb-4 font-bold text-gray-900">サポート</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li><a className="hover:text-[#10b981]" href="/faq">よくある質問</a></li>
+                <li><a className="hover:text-[#10b981]" href="/contact">お問い合わせ</a></li>
+                <li><a className="hover:text-[#10b981]" href="/terms">利用規約</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="mb-4 font-bold text-gray-900">運営</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li><a className="hover:text-[#10b981]" href="/dashboard">会社概要</a></li>
+                <li><a className="hover:text-[#10b981]" href="/privacy">プライバシーポリシー</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-8 border-t border-gray-100 pt-8 text-center text-xs text-gray-400">© 2024 AO Match. All rights reserved.</div>
+        </div>
+      </footer>
+    </div>
     </div>
   );
 }

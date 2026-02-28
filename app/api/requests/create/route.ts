@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { sendLinePushMessage } from "../../../../lib/line";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
+import { getNotificationSettingsForUser } from "../../../../lib/notificationSettings";
 
 const TOPIC_LABELS: Record<string, string> = {
   university_talk: "大学のことをざっくばらんに教えてほしい",
@@ -175,14 +176,20 @@ export async function POST(req: NextRequest) {
     };
 
     if (tutorLineUserId) {
-      try {
-        await sendLinePushMessage(
-          tutorLineUserId,
-          `AO Match: 新しい依頼が届きました。\n${title}\n依頼詳細を確認してください。`
-        );
-        lineNotify.sent = true;
-      } catch {
-        lineNotify.error = "LINE push failed";
+      const tutorSettings = await getNotificationSettingsForUser(supabaseAdmin, resolvedTutorId as string);
+      if (!(tutorSettings.line_enabled && tutorSettings.line_new_request)) {
+        lineNotify.attempted = false;
+        lineNotify.error = "LINE disabled by notification settings";
+      } else {
+        try {
+          await sendLinePushMessage(
+            tutorLineUserId,
+            `AO Match: 新しい依頼が届きました。\n${title}\n依頼詳細を確認してください。`
+          );
+          lineNotify.sent = true;
+        } catch {
+          lineNotify.error = "LINE push failed";
+        }
       }
     }
 

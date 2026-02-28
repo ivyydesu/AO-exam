@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
 import { sendLinePushMessage } from "../../../../../lib/line";
+import { getNotificationSettingsForUser } from "../../../../../lib/notificationSettings";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,6 +20,10 @@ export async function POST(req: NextRequest) {
     if (!profile.line_user_id) {
       return NextResponse.json({ error: "LINE未連携です" }, { status: 400 });
     }
+    const notifySettings = await getNotificationSettingsForUser(supabaseAdmin, user.id);
+    if (!notifySettings.line_enabled) {
+      return NextResponse.json({ error: "LINE通知がOFFです。通知設定でONにしてください。" }, { status: 400 });
+    }
 
     const now = new Date().toLocaleString("ja-JP");
     await sendLinePushMessage(
@@ -32,4 +37,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

@@ -84,15 +84,15 @@ export default function DashboardPage() {
       { label: "取引管理", href: "/demo/request" }
     ],
     admin: [
-      { label: "全依頼を確認", href: "/requests" },
+      { label: "運営トップ", href: "/admin" },
       { label: "学生証審査管理", href: "/admin/verifications" },
-      { label: "レポート", href: "/dashboard" }
+      { label: "通報管理", href: "/admin/reports" }
     ]
   }[profile.role];
 
   const quickLinks = [
     { label: "学生認証ページ", href: "/verification/student-id" },
-    { label: "運営管理画面", href: "/admin/verifications" },
+    { label: "運営管理画面", href: "/admin" },
     { label: "大学生画面", href: "/demo/request" },
     { label: "高校生画面", href: "/demo" },
     { label: "デバッグ画面", href: "/dev/debug" }
