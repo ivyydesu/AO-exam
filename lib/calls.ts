@@ -25,7 +25,7 @@ export async function getCallAccessContext(
 ): Promise<CallAccessContext> {
   const { data: requestRow, error: requestError } = await supabaseAdmin
     .from("requests")
-    .select("id, title, status, requester_id, tutor_id")
+    .select("id, title, status, requester_id, tutor_id, stripe_payment_intent_id, stripe_checkout_session_id")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -47,7 +47,12 @@ export async function getCallAccessContext(
   const testMode = Boolean(options?.testMode);
 
   if (!testMode && !["escrowed", "in_progress", "review_pending", "completed"].includes(requestRow.status)) {
-    throw new Error("このステータスでは通話を開始できません");
+    const hasPaymentProof = Boolean(requestRow.stripe_payment_intent_id);
+    if (["accepted", "escrow_pending"].includes(requestRow.status) && hasPaymentProof) {
+      // Payment intent exists but status might not have been advanced yet.
+    } else {
+      throw new Error("支払い完了待ちです。決済後に通話が開始できます。");
+    }
   }
 
   const { data: detail } = await supabaseAdmin
