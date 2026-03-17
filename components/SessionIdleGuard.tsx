@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseClient } from "../lib/supabase/client";
 
-const IDLE_MS = 15 * 60 * 1000;
+const HIDDEN_IDLE_MS = 45 * 60 * 1000;
 
 export default function SessionIdleGuard() {
   const pathname = usePathname();
@@ -32,29 +32,25 @@ export default function SessionIdleGuard() {
         if (!data.session) return;
         await supabase.auth.signOut();
         router.replace("/auth/login?expired=1");
-      }, IDLE_MS);
+      }, HIDDEN_IDLE_MS);
     };
 
-    const onActivity = () => {
-      startTimer();
+    const onVisibility = () => {
+      if (document.hidden) {
+        startTimer();
+      } else {
+        clearTimer();
+      }
     };
 
-    startTimer();
-    const events: Array<keyof WindowEventMap> = [
-      "mousemove",
-      "keydown",
-      "click",
-      "scroll",
-      "touchstart"
-    ];
-    events.forEach((eventName) => window.addEventListener(eventName, onActivity, { passive: true }));
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      events.forEach((eventName) => window.removeEventListener(eventName, onActivity));
+      document.removeEventListener("visibilitychange", onVisibility);
       clearTimer();
     };
   }, [pathname, router]);
 
   return null;
 }
-

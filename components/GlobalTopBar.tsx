@@ -115,6 +115,7 @@ export default function GlobalTopBar() {
   const links = useMemo(
     () => [
       { href: "/search", label: "先輩を探す", active: pathname.startsWith("/search") || pathname.startsWith("/service/") },
+      { href: "/chat", label: "メッセージ", active: pathname.startsWith("/chat") },
       { href: "/guide", label: "AO Matchについて", active: pathname.startsWith("/guide") }
     ],
     [pathname]

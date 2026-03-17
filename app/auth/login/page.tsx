@@ -18,33 +18,16 @@ function LoginPageContent() {
   const [roleHint, setRoleHint] = useState<"student" | "tutor">("student");
   const [email, setEmail] = useState(emailParam);
   const [password, setPassword] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [mode, setMode] = useState<"password" | "otp">("password");
-  const [otpSent, setOtpSent] = useState(false);
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [otpCooldown, setOtpCooldown] = useState(0);
   const [resetCooldown, setResetCooldown] = useState(0);
 
   const getLandingPath = (currentRole: "student" | "tutor" | "admin") => {
     if (currentRole === "student" || currentRole === "tutor") return "/demo";
     if (currentRole === "admin") return "/admin";
     return "/demo";
-  };
-
-  const normalizeOtp = (value: string) => {
-    const half = value.replace(/[０-９Ａ-Ｚａ-ｚ]/g, (s) =>
-      String.fromCharCode(s.charCodeAt(0) - 0xfee0)
-    );
-    return half.replace(/[^0-9A-Za-z]/g, "");
-  };
-
-  const handlePasteOtp = (event: React.ClipboardEvent<HTMLInputElement>) => {
-    event.preventDefault();
-    const raw = event.clipboardData.getData("text");
-    setOtpCode(normalizeOtp(raw));
   };
 
   useEffect(() => {
@@ -68,13 +51,11 @@ function LoginPageContent() {
   }, []);
 
   useEffect(() => {
-    setOtpCooldown(getCooldownRemaining("login-2fa", email));
     setResetCooldown(getCooldownRemaining("reset-password", email));
   }, [email]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setOtpCooldown((prev) => Math.max(0, prev - 1));
       setResetCooldown((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => window.clearInterval(id);
@@ -134,49 +115,6 @@ function LoginPageContent() {
       const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
       setRoleHint(resolvedRole === "admin" ? "student" : resolvedRole);
 
-      const { data: security } = await supabase
-        .from("notification_settings")
-        .select("email_2fa_enabled")
-        .eq("user_id", data.user.id)
-        .maybeSingle();
-
-      if (security?.email_2fa_enabled) {
-        const cooldown = getCooldownRemaining("login-2fa", email);
-        if (cooldown <= 0) {
-          const { error: otpError } = await supabase.auth.signInWithOtp({
-            email,
-            options: {
-              shouldCreateUser: false,
-              emailRedirectTo: `${window.location.origin}/auth/2fa?role=${resolvedRole === "admin" ? "student" : resolvedRole}&email=${encodeURIComponent(email)}`
-            }
-          });
-          if (otpError) {
-            const normalized = normalizeAuthErrorMessage(otpError.message);
-            if (normalized.includes("メール送信")) {
-              router.push(
-                `/auth/2fa?role=${resolvedRole === "admin" ? "student" : resolvedRole}&email=${encodeURIComponent(email)}&remember=${remember ? "1" : "0"}&notice=${encodeURIComponent("直前に送信された認証コードを入力してください。")}`
-              );
-              return;
-            }
-            throw new Error(otpError.message);
-          }
-          startCooldown("login-2fa", email);
-        }
-        await supabase.auth.signOut();
-        if (remember) {
-          localStorage.setItem(
-            "ao_match_login_saved",
-            JSON.stringify({ email, password })
-          );
-        } else {
-          localStorage.removeItem("ao_match_login_saved");
-        }
-        router.push(
-          `/auth/2fa?role=${resolvedRole === "admin" ? "student" : resolvedRole}&email=${encodeURIComponent(email)}&remember=${remember ? "1" : "0"}&notice=${encodeURIComponent(cooldown > 0 ? "すでに送信済みの認証コードを入力してください。" : "認証コードをメールに送信しました。")}`
-        );
-        return;
-      }
-
       if (remember) {
         localStorage.setItem(
           "ao_match_login_saved",
@@ -186,39 +124,6 @@ function LoginPageContent() {
         localStorage.removeItem("ao_match_login_saved");
       }
       router.push(getLandingPath(resolvedRole));
-    } catch (e) {
-      const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
-      if (message.includes("Failed to fetch")) {
-        setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
-      } else {
-        setError(message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const sendOtp = async () => {
-    setError(null);
-    setNotice(null);
-    setLoading(true);
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabaseが初期化されていません");
-      if (!email) throw new Error("メールアドレスを入力してください");
-      if (otpCooldown > 0) throw new Error(`再送まで${otpCooldown}秒お待ちください`);
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/auth/login?verified=1`
-        }
-      });
-      if (otpError) throw new Error(otpError.message);
-      setOtpSent(true);
-      startCooldown("login-2fa", email);
-      setOtpCooldown(EMAIL_SEND_COOLDOWN_SECONDS);
-      setNotice("認証コードをメール送信しました。");
     } catch (e) {
       const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
@@ -255,41 +160,6 @@ function LoginPageContent() {
     }
   };
 
-  const verifyOtp = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabaseが初期化されていません");
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        email,
-        token: normalizeOtp(otpCode),
-        type: "email"
-      });
-      if (verifyError || !data.user) throw new Error(verifyError?.message ?? "認証コードが無効です");
-      const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
-      if (remember) {
-        localStorage.setItem(
-          "ao_match_login_saved",
-          JSON.stringify({ email, password })
-        );
-      } else {
-        localStorage.removeItem("ao_match_login_saved");
-      }
-      router.push(getLandingPath(resolvedRole));
-    } catch (e) {
-      const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
-      if (message.includes("Failed to fetch")) {
-        setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
-      } else {
-        setError(message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="mx-auto min-h-[calc(100vh-81px)] w-full max-w-[1280px] px-6 py-10">
       <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
@@ -317,19 +187,7 @@ function LoginPageContent() {
                 <p className="mt-2 text-sm text-slate-500">アカウントにログインしてください</p>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <button type="button" className={`rounded-full px-6 py-2.5 text-base font-bold transition ${mode === "password" ? "bg-emerald-500 text-white" : "border border-emerald-500 text-emerald-600"}`} onClick={() => setMode("password")}>
-                    Password
-                  </button>
-                  <button type="button" className={`rounded-full px-6 py-2.5 text-base font-bold transition ${mode === "otp" ? "bg-emerald-500 text-white" : "border border-emerald-500 text-emerald-600"}`} onClick={() => setMode("otp")}>
-                    2FA (Email OTP)
-                  </button>
-                </div>
-              </div>
-
-              {mode === "password" && (
-                <form className="mt-6 grid gap-4" onSubmit={signInPassword}>
+              <form className="mt-6 grid gap-4" onSubmit={signInPassword}>
                   <label className="grid gap-2">
                     <span className="text-sm font-semibold text-slate-700">E-mail Address</span>
                     <input className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition placeholder:text-slate-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -356,40 +214,6 @@ function LoginPageContent() {
                     {resetCooldown > 0 ? `再送まで${resetCooldown}s` : "パスワードを忘れた場合"}
                   </button>
                 </form>
-              )}
-
-              {mode === "otp" && (
-                <form className="mt-6 grid gap-4" onSubmit={verifyOtp}>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-slate-700">E-mail Address</span>
-                    <input className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition placeholder:text-slate-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <button className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60" type="button" onClick={sendOtp} disabled={loading || otpCooldown > 0}>
-                      {otpCooldown > 0 ? `再送まで${otpCooldown}s` : "認証コード送信"}
-                    </button>
-                    {otpSent && <span className="text-xs text-slate-500">送信済み</span>}
-                  </div>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-slate-700">OTPコード</span>
-                    <input
-                      className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition placeholder:text-slate-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(normalizeOtp(e.target.value))}
-                      onPaste={handlePasteOtp}
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      placeholder="メールのコードを貼り付け"
-                      required
-                    />
-                  </label>
-                  {error && <p className="text-sm font-medium text-red-600">{error}</p>}
-                  {notice && <p className="text-sm font-medium text-emerald-600">{notice}</p>}
-                  <button className="rounded-full bg-emerald-500 px-7 py-3 text-xl font-bold text-white transition hover:bg-emerald-600 disabled:opacity-60" disabled={loading}>
-                    {loading ? "処理中..." : "認証してログイン"}
-                  </button>
-                </form>
-              )}
             </div>
           </section>
         </div>

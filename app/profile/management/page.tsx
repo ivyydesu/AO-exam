@@ -28,10 +28,6 @@ export default function ProfileManagementPage() {
                 <span className="text-[22px]">📅</span>
                 <span className="ml-3 hidden lg:block">スケジュール</span>
               </Link>
-              <Link href="/chat" className="flex items-center rounded-lg p-3 text-[#6B7280] transition-colors hover:bg-[#F9FAFB] hover:text-[#10B981]">
-                <span className="text-[22px]">💬</span>
-                <span className="ml-3 hidden lg:block">メッセージ</span>
-              </Link>
               <Link href="/demo/request" className="flex items-center rounded-lg p-3 text-[#6B7280] transition-colors hover:bg-[#F9FAFB] hover:text-[#10B981]">
                 <span className="text-[22px]">📋</span>
                 <span className="ml-3 hidden lg:block">申請状況</span>
@@ -51,7 +47,6 @@ export default function ProfileManagementPage() {
           <div className="mx-auto w-full max-w-[1180px] px-4 pb-20 pt-4 sm:px-6 lg:px-8">
             <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.03)]">
               <ToolRow title="スケジュール" desc="予定と対応日をカレンダーで確認します。" href="/calendar" />
-              <ToolRow title="メッセージ" desc="進行中のチャット一覧を開きます。" href="/chat" />
               <ToolRow title="申請状況の確認" desc="依頼の承認状況や進捗を確認します。" href="/demo/request" />
             </div>
             <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>

@@ -22,7 +22,6 @@ type TutorForm = {
   school: string;
   avatar_url: string;
   cover_url: string;
-  university: string;
   department: string;
   seminar: string;
   grade: string;
@@ -44,7 +43,6 @@ const initialForm: TutorForm = {
   school: "",
   avatar_url: "",
   cover_url: "",
-  university: "",
   department: "",
   seminar: "",
   grade: "",
@@ -79,18 +77,11 @@ export default function ProfileSettingsPage() {
   const [loadingLine, setLoadingLine] = useState(false);
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [loadingEmailChange, setLoadingEmailChange] = useState(false);
-  const [loadingTwoFactorCode, setLoadingTwoFactorCode] = useState(false);
-  const [twoFactorSendCooldown, setTwoFactorSendCooldown] = useState(0);
   const [emailChangeCooldown, setEmailChangeCooldown] = useState(0);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [twoFactorPending, setTwoFactorPending] = useState(false);
-  const [twoFactorCode, setTwoFactorCode] = useState("");
-  const [disableTwoFactorPassword, setDisableTwoFactorPassword] = useState("");
-  const [disableTwoFactorPending, setDisableTwoFactorPending] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [emailChangePending, setEmailChangePending] = useState(false);
   const [emailChangeCode, setEmailChangeCode] = useState("");
@@ -138,7 +129,6 @@ export default function ProfileSettingsPage() {
           const next = settingsPayload.settings as NotificationSettings;
           setSettings(next);
           setDraftSettings(next);
-          setTwoFactorEnabled(Boolean(next.email_2fa_enabled));
         }
 
         const verificationPayload = await verificationRes.json().catch(() => ({}));
@@ -161,16 +151,11 @@ export default function ProfileSettingsPage() {
   }, []);
 
   useEffect(() => {
-    setTwoFactorSendCooldown(getCooldownRemaining("settings-2fa-enable", email));
-  }, [email]);
-
-  useEffect(() => {
     setEmailChangeCooldown(getCooldownRemaining("settings-email-change", newEmail));
   }, [newEmail]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setTwoFactorSendCooldown((prev) => Math.max(0, prev - 1));
       setEmailChangeCooldown((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => window.clearInterval(id);
@@ -206,7 +191,6 @@ export default function ProfileSettingsPage() {
       const fd = new FormData();
       fd.append("full_name", form.full_name);
       fd.append("school", form.school);
-      fd.append("university", form.university);
       fd.append("department", form.department);
       fd.append("seminar", form.seminar);
       fd.append("grade", form.grade);
@@ -298,126 +282,6 @@ export default function ProfileSettingsPage() {
     setDraftSettings(settings);
     setNotice(null);
     setError(null);
-  };
-
-  const saveTwoFactorEnabled = async (next: boolean) => {
-    setTwoFactorEnabled(next);
-    setError(null);
-    setNotice(null);
-    try {
-      const token = await authToken();
-      const res = await fetch(next ? "/api/auth/2fa/enable" : "/api/auth/2fa/disable", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        }
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error ?? "2要素認証設定の保存に失敗しました");
-
-      const nextSettings = { ...settings, email_2fa_enabled: next };
-      setSettings(nextSettings);
-      setDraftSettings((prev) => ({ ...prev, email_2fa_enabled: next }));
-      setNotice(
-        next
-          ? "2要素認証を有効化しました。次回ログイン時にメール確認コードを要求します。"
-          : "2要素認証を無効化しました。"
-      );
-    } catch (e) {
-      setTwoFactorEnabled(!next);
-      setError(e instanceof Error ? e.message : "2要素認証設定の保存に失敗しました");
-    }
-  };
-
-  const requestDisableTwoFactor = () => {
-    setDisableTwoFactorPending(true);
-    setTwoFactorPending(false);
-    setTwoFactorCode("");
-    setNotice("2要素認証を無効化するには現在のパスワードを入力してください。");
-    setError(null);
-  };
-
-  const verifyPasswordAndDisableTwoFactor = async () => {
-    setLoadingTwoFactorCode(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabase client is not initialized");
-      if (!email) throw new Error("メールアドレスが取得できません");
-      if (!disableTwoFactorPassword) throw new Error("現在のパスワードを入力してください");
-
-      const { data, error: reauthError } = await supabase.auth.signInWithPassword({
-        email,
-        password: disableTwoFactorPassword
-      });
-      if (reauthError || !data.user) throw new Error(reauthError?.message ?? "現在のパスワードが正しくありません");
-
-      await saveTwoFactorEnabled(false);
-      setDisableTwoFactorPending(false);
-      setDisableTwoFactorPassword("");
-    } catch (e) {
-      setError(normalizeAuthErrorMessage(e instanceof Error ? e.message : "2要素認証の無効化に失敗しました"));
-    } finally {
-      setLoadingTwoFactorCode(false);
-    }
-  };
-
-  const sendTwoFactorVerificationCode = async () => {
-    setLoadingTwoFactorCode(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabase client is not initialized");
-      if (!email) throw new Error("メールアドレスが取得できません");
-      if (twoFactorSendCooldown > 0) throw new Error(`再送まで${twoFactorSendCooldown}秒お待ちください`);
-
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/profile/settings?tab=login`
-        }
-      });
-      if (otpError) throw new Error(otpError.message);
-
-      startCooldown("settings-2fa-enable", email);
-      setTwoFactorSendCooldown(EMAIL_SEND_COOLDOWN_SECONDS);
-      setTwoFactorPending(true);
-      setNotice("確認コードをメール送信しました。認証コードを入力して2要素認証を有効化してください。");
-    } catch (e) {
-      setError(normalizeAuthErrorMessage(e instanceof Error ? e.message : "確認コード送信に失敗しました"));
-    } finally {
-      setLoadingTwoFactorCode(false);
-    }
-  };
-
-  const verifyTwoFactorCode = async () => {
-    setLoadingTwoFactorCode(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabase client is not initialized");
-      if (!twoFactorCode) throw new Error("確認コードを入力してください");
-
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        email,
-        token: twoFactorCode,
-        type: "email"
-      });
-      if (verifyError) throw new Error(verifyError.message);
-
-      await saveTwoFactorEnabled(true);
-      setTwoFactorPending(false);
-      setTwoFactorCode("");
-    } catch (e) {
-      setError(normalizeAuthErrorMessage(e instanceof Error ? e.message : "確認コードの検証に失敗しました"));
-    } finally {
-      setLoadingTwoFactorCode(false);
-    }
   };
 
   const sendEmailChangeCode = async () => {
@@ -595,7 +459,7 @@ export default function ProfileSettingsPage() {
                 ? "大学生プロフィール登録（検索対象）"
                 : tab === "notifications"
                   ? "通知の受け取り方とLINE連携を管理"
-                  : "メールアドレス・パスワード・2要素認証を管理"}
+                  : "メールアドレス・パスワードを管理"}
             </p>
           </div>
           <div className="hidden md:block" />
@@ -612,7 +476,7 @@ export default function ProfileSettingsPage() {
                 <ManageListRow title="プロフィール設定" desc="公開プロフィール、写真、基本情報を編集します。" onClick={() => setTabAndQuery("profile")} />
                 <ManageListRow title="学生証認証" desc="学生証の表裏と入学/卒業予定年度を提出します。" onClick={() => router.push("/verification/student-id")} />
                 <ManageListRow title="通知設定" desc="メール通知、LINE通知、通知の受け取り方を管理します。" onClick={() => setTabAndQuery("notifications")} />
-                <ManageListRow title="ログイン設定" desc="メールアドレス変更、パスワード変更、2要素認証を管理します。" onClick={() => setTabAndQuery("login")} />
+                <ManageListRow title="ログイン設定" desc="メールアドレス変更、パスワード変更を管理します。" onClick={() => setTabAndQuery("login")} />
               </div>
             </div>
             <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
@@ -699,8 +563,7 @@ export default function ProfileSettingsPage() {
                 <div className="grid grid-cols-1 gap-x-8 gap-y-6 md:grid-cols-2">
                   <ProfileInput label="氏名" value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} />
                   <ProfileInput label="学校名" value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
-                  <ProfileInput label="大学" value={form.university} placeholder="大学名を入力" onChange={(v) => setForm({ ...form, university: v })} />
-                  <ProfileInput label="学部" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
+                  <ProfileInput label="学部学科" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
                   <ProfileInput label="ゼミ" value={form.seminar} onChange={(v) => setForm({ ...form, seminar: v })} />
 
                   <label className="space-y-2">
@@ -952,89 +815,7 @@ export default function ProfileSettingsPage() {
               </form>
             </section>
 
-            <section className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-[0_2px_10px_rgba(0,0,0,0.03)]">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="flex items-center gap-2 text-base font-semibold">
-                    2要素認証
-                    <ShieldIcon />
-                  </h3>
-                  <p className="mt-1 text-sm text-[#6B7280]">ログイン時に追加の確認を求めるセキュリティ設定です。</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (twoFactorEnabled) {
-                      requestDisableTwoFactor();
-                    } else {
-                      setDisableTwoFactorPending(false);
-                      setDisableTwoFactorPassword("");
-                      void sendTwoFactorVerificationCode();
-                    }
-                  }}
-                  className={`relative inline-block h-6 w-11 rounded-full ${twoFactorEnabled ? "bg-[#10B981]" : "bg-gray-300"}`}
-                >
-                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${twoFactorEnabled ? "left-[22px]" : "left-0.5"}`} />
-                </button>
-              </div>
-              {twoFactorPending ? (
-                <div className="mt-4 grid gap-3 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
-                  <p className="text-sm text-[#6B7280]">メールに送られた認証コードを入力すると2要素認証が有効になります。</p>
-                  <div className="flex flex-wrap gap-3">
-                    <input
-                      className="w-48 rounded-lg border border-[#E5E7EB] bg-white px-4 py-2.5 outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
-                      value={twoFactorCode}
-                      onChange={(e) => setTwoFactorCode(e.target.value.replace(/\s+/g, "").replace(/[^0-9A-Za-z]/g, "").slice(0, 8))}
-                      inputMode="text"
-                      maxLength={8}
-                      placeholder="認証コード"
-                    />
-                    <button
-                      type="button"
-                      onClick={verifyTwoFactorCode}
-                      disabled={loadingTwoFactorCode}
-                      className="rounded-lg bg-[#10B981] px-4 py-2 text-sm font-medium text-white hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {loadingTwoFactorCode ? "確認中..." : "コード確認"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {disableTwoFactorPending ? (
-                <div className="mt-4 grid gap-3 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
-                  <p className="text-sm text-[#6B7280]">無効化する前に、現在のパスワードを再入力してください。</p>
-                  <div className="flex flex-wrap gap-3">
-                    <input
-                      className="w-64 rounded-lg border border-[#E5E7EB] bg-white px-4 py-2.5 outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
-                      value={disableTwoFactorPassword}
-                      onChange={(e) => setDisableTwoFactorPassword(e.target.value)}
-                      type="password"
-                      placeholder="現在のパスワード"
-                    />
-                    <button
-                      type="button"
-                      onClick={verifyPasswordAndDisableTwoFactor}
-                      disabled={loadingTwoFactorCode}
-                      className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {loadingTwoFactorCode ? "確認中..." : "確認して無効化"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDisableTwoFactorPending(false);
-                        setDisableTwoFactorPassword("");
-                        setNotice(null);
-                        setError(null);
-                      }}
-                      className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-medium text-[#374151]"
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </section>
+            
 
             <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
           </div>
@@ -1174,14 +955,6 @@ function MailIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClassName()}>
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <path d="m3 7 9 6 9-6" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClassName("h-[18px] w-[18px] text-[#10B981]")}>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
     </svg>
   );
 }
