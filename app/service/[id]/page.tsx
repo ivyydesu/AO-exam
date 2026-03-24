@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getClient } from "../../../lib/demoClient";
 import { getSupabaseClient } from "../../../lib/supabase/client";
-import ReportDialog from "../../../components/ReportDialog";
 
 type Tutor = {
   id: string;
@@ -19,24 +18,10 @@ type Tutor = {
   reviews: number;
   avatar: string;
   seminar: string;
+  bio: string;
 };
 
-const fallbackTutors: Record<string, Tutor> = {
-  "tutor-1": {
-    id: "tutor-1",
-    name: "木戸 洵成",
-    university: "成蹊大学",
-    department: "法学部政治学科",
-    year: "2年",
-    acceptedUniversities: ["成蹊大学 法学部政治学科"],
-    theme: "教育行政といじめ問題について",
-    experience: "個人的なサポートで成蹊大学法学部に3名合格",
-    rating: 4.9,
-    reviews: 12,
-    avatar: "/avatars/mentor.png",
-    seminar: "教育行政ゼミ"
-  }
-};
+const defaultAvatar = "/avatars/mentor.png";
 
 const reviewItems = [
   {
@@ -57,9 +42,21 @@ const reviewItems = [
   }
 ];
 
+function parseBulletItems(raw: string, fallback: string[]) {
+  const normalized = raw
+    .split(/\r?\n|・|•|▪|●|;/)
+    .map((line) => line.trim().replace(/^[-・•▪●]\s*/, ""))
+    .filter(Boolean);
+  if (normalized.length > 0) return normalized.slice(0, 4);
+  return fallback;
+}
+
 export default function ServicePage({ params }: { params: { id: string } }) {
-  const [tutor, setTutor] = useState<Tutor>(fallbackTutors[params.id] ?? fallbackTutors["tutor-1"]);
+  const [tutor, setTutor] = useState<Tutor | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [sessionRole, setSessionRole] = useState<"student" | "tutor" | "admin" | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadRole = async () => {
@@ -76,6 +73,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     const load = async () => {
+      setNotFound(false);
       const supabase = getClient();
       if (supabase) {
         const { data } = await supabase.from("demo_tutors").select("*").eq("id", params.id).maybeSingle();
@@ -91,8 +89,9 @@ export default function ServicePage({ params }: { params: { id: string } }) {
             experience: data.experience ?? "",
             rating: Number(data.rating ?? 0),
             reviews: Number(data.reviews ?? 0),
-            avatar: data.avatar_url || fallbackTutors["tutor-1"].avatar,
-            seminar: data.seminar || "教育行政ゼミ"
+            avatar: data.avatar_url || defaultAvatar,
+            seminar: data.seminar || "教育行政ゼミ",
+            bio: data.bio ?? ""
           });
           return;
         }
@@ -101,7 +100,10 @@ export default function ServicePage({ params }: { params: { id: string } }) {
       try {
         const res = await fetch(`/api/tutors/${params.id}`);
         const payload = await res.json();
-        if (!res.ok || !payload.item) return;
+        if (!res.ok || !payload.item) {
+          setNotFound(true);
+          return;
+        }
         const item = payload.item as {
           id: string;
           name: string;
@@ -113,6 +115,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           coachingExperience: string;
           avatar: string;
           seminar: string;
+          bio: string;
         };
         setTutor({
           id: item.id,
@@ -125,17 +128,82 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           experience: item.coachingExperience || "",
           rating: 5,
           reviews: 0,
-          avatar: item.avatar || fallbackTutors["tutor-1"].avatar,
-          seminar: item.seminar || "教育行政ゼミ"
+          avatar: item.avatar || defaultAvatar,
+          seminar: item.seminar || "教育行政ゼミ",
+          bio: item.bio || ""
         });
       } catch {
-        // no-op
+        setNotFound(true);
       }
     };
     load();
   }, [params.id]);
 
-  const stars = useMemo(() => Array.from({ length: 5 }, (_, i) => i < Math.round(tutor.rating)), [tutor.rating]);
+  const startPrepayMessage = async () => {
+    if (sendingMessage || !tutor) return;
+    setSendingMessage(true);
+    setMessageError(null);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase初期化に失敗しました");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        window.location.href = "/auth/login";
+        return;
+      }
+      const res = await fetch("/api/messages/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ tutorId: tutor.id })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.requestId) {
+        throw new Error(payload?.error ?? "メッセージ開始に失敗しました");
+      }
+      window.location.href = `/chat?requestId=${payload.requestId}`;
+    } catch (e) {
+      setMessageError(e instanceof Error ? e.message : "メッセージ開始に失敗しました");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  if (!tutor && !notFound) {
+    return (
+      <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen bg-[#FDFDFD]">
+        <main className="mx-auto w-full max-w-[1600px] px-6 py-8">
+          <section className="rounded-2xl border border-gray-200 bg-white p-8 text-sm text-gray-600 shadow-sm">
+            先輩プロフィールを読み込み中です...
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (notFound || !tutor) {
+    return (
+      <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen bg-[#FDFDFD]">
+        <main className="mx-auto w-full max-w-[1600px] px-6 py-8">
+          <section className="rounded-2xl border border-gray-200 bg-white p-8 text-sm text-gray-600 shadow-sm">
+            先輩プロフィールが見つかりませんでした。
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  const themeItems = parseBulletItems(tutor.theme, ["探究テーマはプロフィールで設定してください"]);
+  const experienceItems = parseBulletItems(tutor.experience, ["指導経験はプロフィールで設定してください"]);
+  const intro = tutor.bio?.trim()
+    ? tutor.bio
+    : `こんにちは！${tutor.university}の${tutor.name}です。AO入試に向けて、あなたの強みを一緒に整理します。`;
+  const dynamicTags = Array.from(
+    new Set([tutor.department, tutor.seminar, ...themeItems].map((item) => item.trim()).filter(Boolean))
+  ).slice(0, 4);
 
   return (
     <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen bg-[#FDFDFD]">
@@ -145,7 +213,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           <span className="mx-2">›</span>
           <Link href="/demo" className="hover:text-[#FF8C66]">メンター一覧</Link>
           <span className="mx-2">›</span>
-          <span className="font-medium text-gray-900">{tutor.name}</span>
+          <span className="font-medium text-gray-900">{tutor?.name ?? "読み込み中..."}</span>
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
@@ -173,10 +241,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                   </div>
 
                   <div className="mb-6 text-gray-600">
-                    <p>
-                      こんにちは！{tutor.university}の{tutor.name}です。高校時代は探究活動に熱中していました。{tutor.theme}
-                      一緒にあなたの強みを言語化し、AO入試で伝わる形に整えます。
-                    </p>
+                    <p className="whitespace-pre-line">{intro}</p>
                   </div>
 
                   <div className="mt-auto grid grid-cols-2 gap-4">
@@ -197,18 +262,54 @@ export default function ServicePage({ params }: { params: { id: string } }) {
               <div className="h-full rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
                 <h3 className="mb-4 text-lg font-bold text-gray-900">探究テーマ</h3>
                 <ul className="space-y-3 text-gray-700">
-                  <li>• 教育行政といじめ問題について</li>
-                  <li>• 若者の政治参加とSNSの影響</li>
-                  <li>• 地域コミュニティにおける学生の役割</li>
+                  {themeItems.map((item) => (
+                    <li key={`theme-${item}`}>• {item}</li>
+                  ))}
                 </ul>
               </div>
               <div className="h-full rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
                 <h3 className="mb-4 text-lg font-bold text-gray-900">指導経験・実績</h3>
                 <ul className="space-y-3 text-gray-700">
-                  <li>• {tutor.experience}</li>
-                  <li>• 志望理由書の添削経験多数</li>
-                  <li>• 面接練習の壁打ち相手として好評</li>
+                  {experienceItems.map((item) => (
+                    <li key={`exp-${item}`}>• {item}</li>
+                  ))}
                 </ul>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-[#D1FAE5] bg-[#F0FDF4] p-6 shadow-sm">
+              <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                <div className="max-w-2xl">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0f9f74]">How It Works</p>
+                  <h3 className="mt-2 text-xl font-bold text-gray-900">この先輩に相談するときの流れ</h3>
+                  <p className="mt-2 text-sm leading-7 text-gray-600">
+                    「いきなり予約は少し不安」という高校生でも迷わないように、まず質問してから予約できる形にしています。
+                    相談前に雰囲気をつかんで、納得してから次に進めます。
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-sm text-gray-600 shadow-sm">
+                  <div className="font-semibold text-gray-900">向いている人</div>
+                  <div className="mt-2 space-y-1">
+                    <div>・志望理由書の方向性を整理したい</div>
+                    <div>・大学のリアルな雰囲気を聞きたい</div>
+                    <div>・探究テーマの話し方を磨きたい</div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                {[
+                  { step: "1", title: "まず質問する", desc: "不安な点や相談したい内容を、決済前メッセージで先に確認できます。" },
+                  { step: "2", title: "予約・支払い", desc: "内容が合いそうなら依頼を送り、承認後に支払いへ進みます。" },
+                  { step: "3", title: "専用チャット開始", desc: "支払い完了後は専用チャットと必要に応じて通話ルームが使えます。" }
+                ].map((item) => (
+                  <div key={item.step} className="rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="grid size-8 place-items-center rounded-full bg-[#10B981] font-bold text-white">{item.step}</div>
+                      <div className="font-semibold text-gray-900">{item.title}</div>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-gray-600">{item.desc}</p>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -257,33 +358,38 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                     href={`/requests/new?tutorId=${tutor.id}`}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF8C66] px-4 py-3.5 font-bold text-white transition hover:bg-[#FF7A4D]"
                   >
-                    相談を予約する
+                    相談内容を送る
                   </Link>
                 )}
 
-                <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50">
-                  メッセージを送る
+                <button
+                  onClick={() => void startPrepayMessage()}
+                  disabled={sessionRole === "tutor" || sendingMessage}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sendingMessage ? "送信中..." : "まず質問する"}
                 </button>
-                <div className="mt-3">
-                  <ReportDialog
-                    reportType="user"
-                    targetUserId={tutor.id}
-                    triggerLabel="この先輩を通報する"
-                    triggerClassName="flex w-full items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 font-medium text-[#B91C1C] transition hover:bg-[#FDE8E8]"
-                  />
+                {messageError ? (
+                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {messageError}
+                  </p>
+                ) : null}
+                <div className="mt-3 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6B7280]">相談前に分かること</div>
+                  <div className="mt-2 space-y-1 text-sm text-gray-600">
+                    <div>・今すぐ質問できるか</div>
+                    <div>・オンライン対応か文章相談か</div>
+                    <div>・支払い後に専用チャットへ切り替わる流れ</div>
+                  </div>
                 </div>
-
                 <div className="mt-6 border-t border-gray-100 pt-6">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">対応可能なタグ</div>
                   <div className="flex flex-wrap gap-2">
-                    {tutor.theme ? (
-                      <>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#法学</span>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#志望理由書</span>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#面接</span>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">#教育行政</span>
-                      </>
-                    ) : null}
+                    {dynamicTags.map((tag) => (
+                      <span key={`tag-${tag}`} className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                        #{tag.replace(/^#/, "")}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>

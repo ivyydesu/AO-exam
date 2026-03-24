@@ -22,6 +22,22 @@ export default function AdminVerificationsPage() {
   const [items, setItems] = useState<VerificationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showApproved, setShowApproved] = useState(false);
+  const [selectedTag, setSelectedTag] = useState("");
+
+  const normalizeTag = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, "");
+
+  const nameTags = (name: string) => {
+    const compact = name.replace(/\s+/g, "");
+    const parts = name.split(/[\s　]+/).filter(Boolean);
+    const tags = new Set<string>();
+    if (compact) tags.add(`#${compact}`);
+    parts.forEach((part) => tags.add(`#${part}`));
+    return Array.from(tags).slice(0, 3);
+  };
 
   const load = async () => {
     setError(null);
@@ -78,6 +94,24 @@ export default function AdminVerificationsPage() {
     }
   };
 
+  const pendingOrRejected = items.filter((item) => item.status !== "approved");
+  const approvedItems = items.filter((item) => item.status === "approved");
+
+  const approvedTags = Array.from(
+    new Set(approvedItems.flatMap((item) => nameTags(item.full_name)))
+  ).sort();
+
+  const visibleApprovedItems = approvedItems.filter((item) => {
+    if (!selectedTag) return true;
+    return nameTags(item.full_name)
+      .map(normalizeTag)
+      .includes(normalizeTag(selectedTag));
+  });
+
+  const displayItems = showApproved
+    ? [...pendingOrRejected, ...visibleApprovedItems]
+    : pendingOrRejected;
+
   return (
     <div className="mx-auto max-w-6xl grid gap-6">
       <header className="card p-6">
@@ -91,7 +125,47 @@ export default function AdminVerificationsPage() {
 
       {!loading && (
         <div className="grid gap-4">
-          {items.map((item) => (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sand bg-white p-3">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setShowApproved((prev) => !prev);
+                if (showApproved) setSelectedTag("");
+              }}
+            >
+              {showApproved ? "承認済みを隠す" : "承認済みを表示"}
+            </button>
+            {showApproved ? (
+              <>
+                {approvedTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`rounded-full border px-3 py-1 text-xs ${
+                      selectedTag === tag
+                        ? "border-[#10B981] bg-[#ECFDF5] text-[#10B981]"
+                        : "border-sand bg-white text-sea/70 hover:border-[#10B981]"
+                    }`}
+                    onClick={() => setSelectedTag((prev) => (prev === tag ? "" : tag))}
+                  >
+                    {tag}
+                  </button>
+                ))}
+                {selectedTag ? (
+                  <button
+                    type="button"
+                    className="rounded-full border border-sand px-3 py-1 text-xs text-sea/70"
+                    onClick={() => setSelectedTag("")}
+                  >
+                    クリア
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+
+          {displayItems.map((item) => (
             <div key={item.id} className="card p-5 grid gap-4 md:grid-cols-[420px_1fr]">
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-sand overflow-hidden bg-cloud">
@@ -112,7 +186,21 @@ export default function AdminVerificationsPage() {
               <div className="grid gap-2">
                 <p className="text-base font-semibold text-ink">{item.full_name}</p>
                 <p className="text-sm text-sea/70">user_id: {item.user_id}</p>
-                <p className="text-sm text-sea/70">状態: {item.status}</p>
+                <p className="text-sm text-sea/70">
+                  状態: {item.status}
+                  {item.status === "approved" ? (
+                    <span className="ml-2 font-bold text-red-600">承認しました</span>
+                  ) : null}
+                </p>
+                {item.status === "approved" ? (
+                  <p className="flex flex-wrap gap-2 text-xs">
+                    {nameTags(item.full_name).map((tag) => (
+                      <span key={`${item.id}-${tag}`} className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-red-600">
+                        {tag}
+                      </span>
+                    ))}
+                  </p>
+                ) : null}
                 <p className="text-sm text-sea/70">入学年度: {item.admission_year ?? "-"} / 卒業予定: {item.graduation_year ?? "-"}</p>
                 <p className="text-sm text-sea/70">提出日: {new Date(item.created_at).toLocaleString()}</p>
                 {item.reason && <p className="text-sm text-accent">差し戻し理由: {item.reason}</p>}
@@ -136,7 +224,7 @@ export default function AdminVerificationsPage() {
               </div>
             </div>
           ))}
-          {items.length === 0 && <p className="text-sm text-sea/70">審査待ちデータはありません。</p>}
+          {displayItems.length === 0 && <p className="text-sm text-sea/70">表示できる審査データはありません。</p>}
         </div>
       )}
     </div>
