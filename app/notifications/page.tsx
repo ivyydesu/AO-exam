@@ -30,7 +30,7 @@ export default function NotificationsPage() {
         </ul>
       </div>
 
-      <Link href="/demo" className="btn btn-secondary w-fit">
+      <Link href="/home" className="btn btn-secondary w-fit">
         デモへ戻る
       </Link>
     </div>

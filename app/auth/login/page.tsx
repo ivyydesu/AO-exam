@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
+import { isAllowedAdminEmail } from "../../../lib/auth/adminAllowlist";
 import {
   EMAIL_SEND_COOLDOWN_SECONDS,
   getCooldownRemaining,
@@ -25,9 +26,9 @@ function LoginPageContent() {
   const [resetCooldown, setResetCooldown] = useState(0);
 
   const getLandingPath = (currentRole: "student" | "tutor" | "admin") => {
-    if (currentRole === "student" || currentRole === "tutor") return "/demo";
-    if (currentRole === "admin") return "/admin";
-    return "/demo";
+    if (currentRole === "student" || currentRole === "tutor") return "/home";
+    if (currentRole === "admin") return `/auth/2fa?mode=admin&email=${encodeURIComponent(email)}&returnTo=${encodeURIComponent("/admin")}`;
+    return "/home";
   };
 
   useEffect(() => {
@@ -82,7 +83,10 @@ function LoginPageContent() {
         : null;
 
     if (!profile) {
-      const createRole = normalizedRegisteredRole ?? roleHint;
+      const createRole =
+        normalizedRegisteredRole === "admin" && !isAllowedAdminEmail(userEmail)
+          ? roleHint
+          : (normalizedRegisteredRole ?? roleHint);
       const fallbackName = (userEmail?.split("@")[0] ?? "AO Match User").slice(0, 40);
       const { error: insertError } = await supabase.from("profiles").insert({
         id: userId,
@@ -92,6 +96,9 @@ function LoginPageContent() {
       });
       if (insertError) throw new Error(`プロフィール初期化に失敗しました: ${insertError.message}`);
       return createRole;
+    }
+    if (profile.role === "admin" && !isAllowedAdminEmail(userEmail)) {
+      return "student";
     }
     return (profile.role as "student" | "tutor" | "admin") ?? "student";
   };

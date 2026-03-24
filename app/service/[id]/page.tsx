@@ -209,9 +209,9 @@ export default function ServicePage({ params }: { params: { id: string } }) {
     <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen bg-[#FDFDFD]">
       <main className="mx-auto w-full max-w-[1600px] px-6 py-8">
         <div className="mb-6 flex items-center text-sm text-gray-500">
-          <Link href="/demo" className="hover:text-[#FF8C66]">トップ</Link>
+          <Link href="/home" className="hover:text-[#FF8C66]">トップ</Link>
           <span className="mx-2">›</span>
-          <Link href="/demo" className="hover:text-[#FF8C66]">メンター一覧</Link>
+          <Link href="/home" className="hover:text-[#FF8C66]">メンター一覧</Link>
           <span className="mx-2">›</span>
           <span className="font-medium text-gray-900">{tutor?.name ?? "読み込み中..."}</span>
         </div>

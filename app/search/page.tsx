@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 type TutorSearchItem = {
   id: string;
@@ -25,16 +25,25 @@ export default function SearchPage() {
   const [seminar, setSeminar] = useState("");
   const [university, setUniversity] = useState("");
   const [grade, setGrade] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [searchedOnce, setSearchedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<TutorSearchItem[]>([]);
 
   const loadTutors = async () => {
+    const hasCondition = Boolean(seminar.trim() || university.trim() || keyword.trim() || grade.trim());
+    if (!hasCondition) {
+      setItems([]);
+      setError("検索条件を1つ以上入力してください。");
+      setSearchedOnce(true);
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    setSearchedOnce(true);
     try {
       const params = new URLSearchParams();
-      params.set("includeUnpublished", "1");
       if (seminar.trim()) params.set("seminar", seminar.trim());
       if (university.trim()) params.set("university", university.trim());
       if (keyword.trim()) params.set("researchTheme", keyword.trim());
@@ -46,7 +55,7 @@ export default function SearchPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error ?? "先輩一覧の取得に失敗しました");
 
-      const nextItems = (payload.items ?? []) as TutorSearchItem[];
+      const nextItems = ((payload.items ?? []) as TutorSearchItem[]).filter((item) => item.isPublished === true);
       setItems(nextItems);
     } catch (e) {
       setError(e instanceof Error ? e.message : "先輩一覧の取得に失敗しました");
@@ -55,11 +64,8 @@ export default function SearchPage() {
     }
   };
 
-  useEffect(() => {
-    void loadTutors();
-  }, []);
-
   const filteredCountLabel = useMemo(() => `${items.length}件`, [items.length]);
+  const hasAnyCondition = Boolean(seminar.trim() || university.trim() || keyword.trim() || grade.trim());
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-6 py-8">
@@ -67,7 +73,7 @@ export default function SearchPage() {
         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#10B981]">Search</p>
         <h1 className="mt-3 text-4xl font-bold text-[#111827]">先輩検索</h1>
         <p className="mt-3 text-base text-[#6B7280]">
-          データベースに登録されている先輩をすべて表示しています。条件を入れるとその場で絞り込めます。
+          公開プロフィールの先輩のみ表示しています。条件を入れて、あなたに合う先輩を探せます。
         </p>
       </header>
 
@@ -83,6 +89,9 @@ export default function SearchPage() {
                 setSeminar("");
                 setUniversity("");
                 setGrade("");
+                setItems([]);
+                setSearchedOnce(false);
+                setError(null);
               }}
             >
               クリア
@@ -149,9 +158,11 @@ export default function SearchPage() {
           <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-[#E5E7EB] bg-white px-5 py-4 shadow-sm">
             <div>
               <h2 className="text-2xl font-bold text-[#111827]">検索結果</h2>
-              <p className="text-sm text-[#6B7280]">現在 {filteredCountLabel} の先輩を表示中</p>
+              <p className="text-sm text-[#6B7280]">
+                {searchedOnce ? `現在 ${filteredCountLabel} の先輩を表示中` : "条件を入力して「検索する」を押してください"}
+              </p>
             </div>
-            <Link href="/demo" className="rounded-xl border border-[#E5E7EB] px-4 py-2 text-sm font-medium text-[#374151]">
+            <Link href="/home" className="rounded-xl border border-[#E5E7EB] px-4 py-2 text-sm font-medium text-[#374151]">
               デモへ戻る
             </Link>
           </div>
@@ -164,7 +175,11 @@ export default function SearchPage() {
             <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-sm text-red-700 shadow-sm">
               {error}
             </div>
-          ) : items.length === 0 ? (
+          ) : !searchedOnce ? (
+            <div className="rounded-3xl border border-[#E5E7EB] bg-white p-8 text-sm text-[#6B7280] shadow-sm">
+              まだ検索は実行されていません。左の条件を入力して検索してください。
+            </div>
+          ) : hasAnyCondition && items.length === 0 ? (
             <div className="rounded-3xl border border-[#E5E7EB] bg-white p-8 text-sm text-[#6B7280] shadow-sm">
               条件に一致する先輩がいません。
             </div>
@@ -184,13 +199,7 @@ export default function SearchPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="truncate text-xl font-bold text-[#111827]">{item.name}</h3>
-                        <span
-                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                            item.isPublished ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {item.isPublished ? "公開中" : "非公開"}
-                        </span>
+                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">公開中</span>
                       </div>
                       <p className="mt-1 text-sm text-[#374151]">{item.university} {item.department}</p>
                       <p className="mt-1 text-sm text-[#6B7280]">{item.grade || "学年未設定"} / {item.seminar || "ゼミ未設定"}</p>

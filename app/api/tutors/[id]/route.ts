@@ -1,10 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
+import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+
+const UUID_V4_OR_V1 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
     const tutorId = params.id;
+    if (!UUID_V4_OR_V1.test(tutorId)) {
+      return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
+    }
+    let requesterId: string | null = null;
+    let requesterRole: "student" | "tutor" | "admin" | null = null;
+
+    try {
+      const authed = await requireUserFromBearerToken(_req);
+      requesterId = authed.id;
+      const { data: me } = await supabaseAdmin.from("profiles").select("role").eq("id", authed.id).maybeSingle();
+      requesterRole = (me?.role as "student" | "tutor" | "admin" | null) ?? null;
+    } catch {
+      requesterId = null;
+      requesterRole = null;
+    }
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
@@ -48,6 +66,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
 
     if (!tutor) return NextResponse.json({ error: "Tutor profile not found" }, { status: 404 });
+    const isPublished = tutor.is_published === true;
+    const canViewUnpublished = requesterRole === "admin" || requesterId === tutorId;
+    if (!isPublished && !canViewUnpublished) {
+      return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
+    }
 
     return NextResponse.json({
       item: {
@@ -62,7 +85,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         researchTheme: tutor.research_theme ?? "",
         coachingExperience: tutor.coaching_experience ?? "",
         bio: tutor.bio ?? "",
-        isPublished: tutor.is_published ?? true
+        isPublished
       }
     });
   } catch (error) {

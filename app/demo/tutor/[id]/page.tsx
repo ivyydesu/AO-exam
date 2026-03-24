@@ -58,7 +58,7 @@ export default function TutorDetailPage({ params }: { params: { id: string } }) 
     return (
       <div className="card p-6">
         <p className="text-sea">先輩が見つかりません。</p>
-        <Link className="btn btn-secondary mt-4" href="/demo">戻る</Link>
+        <Link className="btn btn-secondary mt-4" href="/home">戻る</Link>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export default function TutorDetailPage({ params }: { params: { id: string } }) 
           <p className="text-sm text-sea/70 mt-1">{tutor.university} / {tutor.department}</p>
         </div>
         <div className="flex gap-2">
-          <Link className="btn btn-secondary" href="/demo">高校生画面</Link>
+          <Link className="btn btn-secondary" href="/home">高校生画面</Link>
           <Link className="btn btn-secondary" href="/demo/request">大学生画面</Link>
         </div>
       </header>
@@ -108,7 +108,7 @@ export default function TutorDetailPage({ params }: { params: { id: string } }) 
           <p className="text-sm text-sea/70">この先輩に依頼したい場合</p>
           <p className="text-xs text-sea/60">デモ画面に戻って依頼フォームを開いてください。</p>
         </div>
-        <Link className="btn btn-primary" href="/demo">デモへ戻る</Link>
+        <Link className="btn btn-primary" href="/home">デモへ戻る</Link>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
 type Verification = {
@@ -15,7 +16,9 @@ type Verification = {
 };
 
 export default function StudentIdVerificationPage() {
+  const router = useRouter();
   const [verification, setVerification] = useState<Verification | null>(null);
+  const [allowed, setAllowed] = useState<boolean | null>(null);
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
   const [admissionYear, setAdmissionYear] = useState("");
@@ -36,6 +39,14 @@ export default function StudentIdVerificationPage() {
       return;
     }
     const token = sessionData.session.access_token;
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", sessionData.session.user.id).maybeSingle();
+    const isTutor = profile?.role === "tutor";
+    setAllowed(isTutor);
+    if (!isTutor) {
+      router.replace("/profile/settings?tab=manage");
+      return;
+    }
+
     const res = await fetch("/api/verification/student-id", {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -101,7 +112,8 @@ export default function StudentIdVerificationPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="card p-8 grid gap-6">
+      <div className="card grid gap-6 p-8">
+        {allowed === false ? null : null}
         <div>
           <h1 className="text-2xl font-semibold text-sea">学生証認証</h1>
           <p className="mt-2 text-sm text-sea/70">
@@ -167,7 +179,7 @@ export default function StudentIdVerificationPage() {
           </button>
         </form>
 
-        <Link href="/demo" className="text-sm text-accent">トップへ戻る</Link>
+        <Link href="/home" className="text-sm text-accent">トップへ戻る</Link>
       </div>
     </div>
   );

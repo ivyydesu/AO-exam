@@ -16,7 +16,7 @@ export default function ContactPage() {
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 md:px-12">
           <BrandLogo />
           <div className="hidden items-center gap-6 text-sm font-medium text-[#6b7280] md:flex">
-            <Link className="transition-colors hover:text-[#00B884]" href="/demo">
+            <Link className="transition-colors hover:text-[#00B884]" href="/home">
               ホーム
             </Link>
             <span className="font-semibold text-[#00B884]">お問い合わせ</span>

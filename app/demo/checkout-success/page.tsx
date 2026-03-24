@@ -40,7 +40,7 @@ export default function CheckoutSuccessPage() {
     <div className="card p-8 grid gap-4">
       <h1 className="text-2xl font-semibold text-sea">支払い完了（テスト）</h1>
       <p className="text-sea/80">{message}</p>
-      <Link className="btn btn-primary" href="/demo">デモ画面へ戻る</Link>
+      <Link className="btn btn-primary" href="/home">デモ画面へ戻る</Link>
     </div>
   );
 }

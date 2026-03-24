@@ -97,7 +97,7 @@ export default function DemoChatPage({ params }: { params: { id: string } }) {
           <h1 className="text-3xl font-display font-semibold text-ink">チャットルーム</h1>
         </div>
         <div className="flex gap-2">
-          <Link className="btn btn-secondary" href="/demo">高校生画面</Link>
+          <Link className="btn btn-secondary" href="/home">高校生画面</Link>
           <Link className="btn btn-secondary" href="/demo/request">大学生画面</Link>
         </div>
       </header>

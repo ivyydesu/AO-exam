@@ -37,7 +37,7 @@ export default function CasesPage() {
             <Link href="/demo/request">取引管理</Link>
             <Link href="/cases">案件管理</Link>
             <Link href="/favorites">お気に入り</Link>
-            <Link className="btn btn-secondary" href="/demo">サービスを探す</Link>
+            <Link className="btn btn-secondary" href="/home">サービスを探す</Link>
             <details className="relative">
               <summary className="list-none cursor-pointer">
                 <div className="h-9 w-9 rounded-full bg-sand/70 grid place-items-center text-xs">👤</div>
@@ -47,7 +47,7 @@ export default function CasesPage() {
                 <div className="mt-2 grid gap-2 text-sm text-sea/70">
                   <Link href="/demo/request">注文履歴</Link>
                   <Link href="/favorites">お気に入り</Link>
-                  <Link href="/settings">設定</Link>
+                  <Link href="/profile/settings?tab=manage">設定</Link>
                 </div>
               </div>
             </details>
