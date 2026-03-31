@@ -1,0 +1,108 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: #f9fafb;
+  color: #111827;
+  font-family: "Noto Sans JP", "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  overflow-x: clip;
+}
+
+#__next {
+  min-height: 100%;
+}
+
+a {
+  color: #10b981;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.accent-gradient {
+  height: 4px;
+  background: linear-gradient(90deg, #06b6d4 0%, #22c55e 35%, #f97316 70%, #ec4899 100%);
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.app-topbar > div {
+  max-width: 1220px;
+  margin: 0 auto;
+  min-height: 80px;
+}
+
+.app-shell {
+  min-height: calc(100vh - 81px);
+  background: #f9fafb;
+  overflow-x: clip;
+}
+
+.app-shell__content {
+  position: relative;
+  z-index: 10;
+}
+
+.card, .soft-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.btn-primary {
+  background: #10b981;
+  color: #fff;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: #10b981;
+  border: 1px solid #10b981;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}

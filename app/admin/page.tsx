@@ -25,6 +25,8 @@ export default function AdminHomePage() {
         <AdminCard title="通報管理" desc="ユーザー・取引・通話に関する通報を一覧確認し、対応状況を更新します。" href="/admin/reports" />
         <AdminCard title="ユーザー管理" desc="アカウント停止、本人確認状況、利用状態を確認・制御します。" href="/admin/users" />
         <AdminCard title="メッセージ審査" desc="メッセージ通報に絞って審査する管理導線です。" href="/admin/reports?reportType=message" />
+        <AdminCard title="チャット監視" desc="運営が全ユーザー間のやり取りを監視・確認できる専用画面です。" href="/admin/chats" />
+        <AdminCard title="決済手数料設定" desc="運営取り分(%)を管理します。Stripe決済時の手数料計算に反映されます。" href="/admin/stripe" />
       </div>
     </div>
   );

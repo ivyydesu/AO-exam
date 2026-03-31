@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
-import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
+import { requireStrictAdminFromBearer } from "../../../../../lib/auth/requireStrictAdmin";
+import { writeSecurityAudit } from "../../../../../lib/security/audit";
+import { getRequestMeta } from "../../../../../lib/security/requestMeta";
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUserFromBearerToken(req);
-    const supabaseAdmin = getSupabaseAdmin();
-
-    const { data: me, error: meError } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (meError || !me || me.role !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
+    const { user, supabaseAdmin } = await requireStrictAdminFromBearer(req);
+    const { ip, userAgent } = getRequestMeta(req);
 
     const status = req.nextUrl.searchParams.get("status");
     const reportType = req.nextUrl.searchParams.get("reportType");
@@ -34,6 +25,18 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
+      const missingReportsTable =
+        error.message.includes("Could not find the table 'public.reports'") ||
+        error.message.toLowerCase().includes("relation \"reports\" does not exist");
+      if (missingReportsTable) {
+        return NextResponse.json(
+          {
+            error: "DBに reports テーブルがありません。Supabase SQLを実行してスキーマを反映してください。",
+            code: "REPORTS_TABLE_MISSING"
+          },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
@@ -63,9 +66,22 @@ export async function GET(req: NextRequest) {
       reviewed_by_name: item.reviewed_by ? profileMap[item.reviewed_by]?.full_name ?? "Unknown" : null
     }));
 
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: user.id,
+      event_type: "admin_reports_list_viewed",
+      resource_type: "report",
+      result: "success",
+      detail: `status=${status || "-"} type=${reportType || "-"}`,
+      ip,
+      user_agent: userAgent
+    });
+
     return NextResponse.json({ items });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: 401 });
+    return NextResponse.json(
+      { error: message },
+      { status: message.includes("Admin") ? 403 : 401 }
+    );
   }
 }

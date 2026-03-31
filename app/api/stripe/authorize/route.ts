@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
+import { getPlatformFeePercent } from "../../../../lib/platformFee";
+import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+import { assertTrustedOrigin } from "../../../../lib/security/csrf";
+import { consumeRateLimit } from "../../../../lib/security/rateLimit";
+import { isStrictAdmin } from "../../../../lib/auth/adminAllowlist";
 
 type AuthorizeBody = {
   requestId: string;
@@ -9,8 +14,17 @@ type AuthorizeBody = {
 
 export async function POST(req: NextRequest) {
   try {
+    assertTrustedOrigin(req);
+    const user = await requireUserFromBearerToken(req);
+    const limit = await consumeRateLimit(`stripe:authorize:${user.id}`, 20, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `操作回数が多すぎます。${limit.retryAfterSec}秒後に再試行してください。` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+      );
+    }
     const appMode = getAppModeFromRequest(req);
-    const allowTestBypass = process.env.NODE_ENV !== "production" || appMode === "test";
+    const allowTestBypass = process.env.NODE_ENV !== "production" && appMode === "test";
     const body = (await req.json()) as AuthorizeBody;
     const requestId = body.requestId;
 
@@ -19,10 +33,22 @@ export async function POST(req: NextRequest) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+    const { data: me, error: meError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
+      .single();
+    if (meError || !me) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+    const strictAdmin = isStrictAdmin(me.role, user.email);
+    if (me.role !== "student" && !strictAdmin) {
+      return NextResponse.json({ error: "Unauthorized role for payment auth" }, { status: 403 });
+    }
 
     const { data: requestRow, error: requestError } = await supabaseAdmin
       .from("requests")
-      .select("id, title, budget, status, tutor_id")
+      .select("id, title, budget, status, tutor_id, requester_id")
       .eq("id", requestId)
       .single();
 
@@ -32,6 +58,9 @@ export async function POST(req: NextRequest) {
 
     if (!requestRow.tutor_id) {
       return NextResponse.json({ error: "Tutor is not assigned" }, { status: 400 });
+    }
+    if (!strictAdmin && requestRow.requester_id !== user.id) {
+      return NextResponse.json({ error: "この依頼の決済操作権限がありません" }, { status: 403 });
     }
 
     if (!["accepted", "draft", "escrow_pending"].includes(requestRow.status)) {
@@ -72,7 +101,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid request budget" }, { status: 400 });
     }
 
-    const feePercent = Number(process.env.PLATFORM_FEE_PERCENT ?? 15);
+    const feePercent = await getPlatformFeePercent(supabaseAdmin);
     const applicationFeeAmount = Math.floor((amount * feePercent) / 100);
 
     const paymentIntentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
@@ -113,6 +142,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to authorize payment";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status =
+      message.includes("Authorization") || message.includes("Invalid user token")
+        ? 401
+        : message.includes("CSRF blocked")
+          ? 403
+          : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

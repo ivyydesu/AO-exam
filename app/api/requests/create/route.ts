@@ -3,6 +3,11 @@ import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { sendLinePushMessage } from "../../../../lib/line";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
 import { getNotificationSettingsForUser } from "../../../../lib/notificationSettings";
+import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+import { sanitizePlainText } from "../../../../lib/security/input";
+import { consumeRateLimit } from "../../../../lib/security/rateLimit";
+import { writeSecurityAudit } from "../../../../lib/security/audit";
+import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 
 const TOPIC_LABELS: Record<string, string> = {
   university_talk: "大学のことをざっくばらんに教えてほしい",
@@ -41,12 +46,22 @@ function calculateSuggestedPrice(topic: string, method: string, duration: string
 }
 
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
   try {
+    assertTrustedOrigin(req);
+    const user = await requireUserFromBearerToken(req);
+    const limit = await consumeRateLimit(`requests:create:${user.id}`, 10, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `送信回数が多すぎます。${limit.retryAfterSec}秒後に再試行してください。` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+      );
+    }
+
     const body = await req.json();
-    const requesterId = String(body.requesterId ?? "");
     const tutorId = String(body.tutorId ?? "");
     const supportTopic = String(body.supportTopic ?? "");
-    const supportTopicOther = String(body.supportTopicOther ?? "");
+    const supportTopicOther = sanitizePlainText(String(body.supportTopicOther ?? ""), 200);
     const supportMethod = String(body.supportMethod ?? "");
     const estimatedDuration = String(body.estimatedDuration ?? "");
     const requestedDeadline = String(body.requestedDeadline ?? "");
@@ -55,7 +70,7 @@ export async function POST(req: NextRequest) {
     const appMode = getAppModeFromRequest(req);
     const allowTestBypass = process.env.NODE_ENV !== "production" && appMode === "test";
 
-    if (!requesterId || !tutorId || !supportTopic || !supportMethod || !estimatedDuration || !requestedDeadline) {
+    if (!tutorId || !supportTopic || !supportMethod || !estimatedDuration || !requestedDeadline) {
       return NextResponse.json({ error: "必須項目が不足しています" }, { status: 400 });
     }
 
@@ -63,20 +78,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "入力値が不正です" }, { status: 400 });
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
-
     const { data: requester, error: requesterError } = await supabaseAdmin
       .from("profiles")
       .select("id, role")
-      .eq("id", requesterId)
+      .eq("id", user.id)
       .single();
     if (requesterError || !requester || requester.role !== "student") {
+      await writeSecurityAudit(supabaseAdmin, {
+        actor_id: user.id,
+        event_type: "request_create_blocked",
+        resource_type: "request",
+        result: "failure",
+        detail: "invalid requester role",
+        ip: req.headers.get("x-forwarded-for"),
+        user_agent: req.headers.get("user-agent")
+      });
       return NextResponse.json({ error: "依頼者情報が不正です" }, { status: 403 });
     }
 
-    const { data: tutor, error: tutorError } = await supabaseAdmin
+    const { data: tutor } = await supabaseAdmin
       .from("profiles")
-      .select("id, role, full_name, line_user_id")
+      .select("id, role, line_user_id")
       .eq("id", tutorId)
       .single();
     let resolvedTutorId: string | null = tutor?.role === "tutor" ? tutor.id : null;
@@ -102,9 +124,7 @@ export async function POST(req: NextRequest) {
     }
 
     const topicLabel =
-      supportTopic === "other" && supportTopicOther
-        ? `その他: ${supportTopicOther}`
-        : TOPIC_LABELS[supportTopic];
+      supportTopic === "other" && supportTopicOther ? `その他: ${supportTopicOther}` : TOPIC_LABELS[supportTopic];
     const methodLabel = METHOD_LABELS[supportMethod];
     const durationLabel = DURATION_LABELS[estimatedDuration];
     const suggestedPrice = calculateSuggestedPrice(supportTopic, supportMethod, estimatedDuration);
@@ -124,19 +144,14 @@ export async function POST(req: NextRequest) {
         dryRun: true,
         mode: appMode,
         warning: !resolvedTutorId ? "テストモード: tutor未登録のため未割当で作成されます" : null,
-        preview: {
-          title,
-          description,
-          suggestedPrice,
-          requestedPrice: safeRequestedPrice
-        }
+        preview: { title, description, suggestedPrice, requestedPrice: safeRequestedPrice }
       });
     }
 
     const { data: requestRow, error: requestError } = await supabaseAdmin
       .from("requests")
       .insert({
-        requester_id: requesterId,
+        requester_id: user.id,
         tutor_id: resolvedTutorId,
         title,
         description,
@@ -161,20 +176,14 @@ export async function POST(req: NextRequest) {
     });
 
     const missingRequestDetails =
-      detailError?.message?.includes("request_details") &&
-      detailError?.message?.includes("schema cache");
+      detailError?.message?.includes("request_details") && detailError?.message?.includes("schema cache");
 
     if (detailError && !(allowTestBypass && missingRequestDetails)) {
       await supabaseAdmin.from("requests").delete().eq("id", requestRow.id);
       return NextResponse.json({ error: detailError.message }, { status: 500 });
     }
 
-    let lineNotify = {
-      attempted: Boolean(tutorLineUserId),
-      sent: false,
-      error: null as string | null
-    };
-
+    let lineNotify = { attempted: Boolean(tutorLineUserId), sent: false, error: null as string | null };
     if (tutorLineUserId) {
       const tutorSettings = await getNotificationSettingsForUser(supabaseAdmin, resolvedTutorId as string);
       if (!(tutorSettings.line_enabled && tutorSettings.line_new_request)) {
@@ -184,7 +193,7 @@ export async function POST(req: NextRequest) {
         try {
           await sendLinePushMessage(
             tutorLineUserId,
-            `AO Match: 新しい依頼が届きました。\n${title}\n依頼詳細を確認してください。`
+            `【ユニブリ 通知】新しい依頼が届きました\n--------------------------------\n件名: ${title}\n状態: 確認待ち\n次の操作: ユニブリで依頼内容を確認してください`
           );
           lineNotify.sent = true;
         } catch {
@@ -192,6 +201,16 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: user.id,
+      event_type: "request_created",
+      resource_type: "request",
+      resource_id: requestRow.id,
+      result: "success",
+      ip: req.headers.get("x-forwarded-for"),
+      user_agent: req.headers.get("user-agent")
+    });
 
     return NextResponse.json({
       ok: true,
@@ -209,6 +228,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "依頼作成に失敗しました";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message.includes("CSRF blocked") ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
+

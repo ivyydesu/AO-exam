@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
-import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
+import { requireStrictAdminFromBearer } from "../../../../../lib/auth/requireStrictAdmin";
+import { assertTrustedOrigin } from "../../../../../lib/security/csrf";
+import { consumeRateLimit } from "../../../../../lib/security/rateLimit";
+import { writeSecurityAudit } from "../../../../../lib/security/audit";
+import { getRequestMeta } from "../../../../../lib/security/requestMeta";
 
 type SuspendBody = {
   userId: string;
@@ -20,8 +23,17 @@ function isMissingSuspendColumns(message: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const currentUser = await requireUserFromBearerToken(req);
+    assertTrustedOrigin(req);
+    const { user: currentUser, supabaseAdmin } = await requireStrictAdminFromBearer(req);
+    const limit = await consumeRateLimit(`admin:users:suspend:${currentUser.id}`, 20, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `Too many requests. Retry in ${limit.retryAfterSec}s.` },
+        { status: 429 }
+      );
+    }
     const body = (await req.json()) as SuspendBody;
+    const { ip, userAgent } = getRequestMeta(req);
 
     if (!body.userId || typeof body.suspended !== "boolean") {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -29,17 +41,6 @@ export async function POST(req: NextRequest) {
 
     if (body.userId === currentUser.id) {
       return NextResponse.json({ error: "自分自身の停止はできません" }, { status: 400 });
-    }
-
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data: me, error: meError } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", currentUser.id)
-      .single();
-
-    if (meError || !me || me.role !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
     let suspendedUntil: string | null = null;
@@ -72,9 +73,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: currentUser.id,
+      event_type: body.suspended ? "admin_user_suspended" : "admin_user_unsuspended",
+      resource_type: "user",
+      resource_id: body.userId,
+      result: "success",
+      detail: body.suspended ? `until=${suspendedUntil || "none"} reason=${body.reason || "-"}` : "reactivated",
+      ip,
+      user_agent: userAgent
+    });
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: 401 });
+    return NextResponse.json(
+      { error: message },
+      { status: message.includes("CSRF blocked") || message.includes("Admin") ? 403 : 401 }
+    );
   }
 }

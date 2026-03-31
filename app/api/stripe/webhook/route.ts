@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
+import { ensurePaidChatGroup } from "../../../../lib/chatGroups";
 
 export async function POST(req: Request) {
   const body = await req.text();
@@ -42,6 +43,12 @@ export async function POST(req: Request) {
         .eq("id", requestId);
 
       if (requestForChat?.requester_id && requestForChat?.tutor_id) {
+        await ensurePaidChatGroup(
+          supabaseAdmin,
+          requestForChat.id,
+          requestForChat.requester_id,
+          requestForChat.tutor_id
+        );
         const { count } = await supabaseAdmin
           .from("messages")
           .select("id", { count: "exact", head: true })
@@ -49,11 +56,19 @@ export async function POST(req: Request) {
 
         if (!count || count === 0) {
           const starterSender = requestForChat.tutor_id ?? requestForChat.requester_id;
-          await supabaseAdmin.from("messages").insert({
+          const insertResult = await supabaseAdmin.from("messages").insert({
             request_id: requestForChat.id,
             sender_id: starterSender,
-            content: "【AO Match】支払いが完了しました。ここからチャットで相談を開始できます。"
+            content: "【ユニブリ】支払いが完了しました。専用チャットグループを作成しました。ここからチャットで相談を開始できます。",
+            message_kind: "system"
           });
+          if (insertResult.error && insertResult.error.message.includes("column")) {
+            await supabaseAdmin.from("messages").insert({
+              request_id: requestForChat.id,
+              sender_id: starterSender,
+              content: "【ユニブリ】支払いが完了しました。専用チャットグループを作成しました。ここからチャットで相談を開始できます。"
+            });
+          }
         }
       }
     }

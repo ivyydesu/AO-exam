@@ -1,12 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
+import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+import { assertTrustedOrigin } from "../../../../lib/security/csrf";
+import { consumeRateLimit } from "../../../../lib/security/rateLimit";
+import { isStrictAdmin } from "../../../../lib/auth/adminAllowlist";
 
 export async function POST(req: NextRequest) {
   try {
+    assertTrustedOrigin(req);
+    const user = await requireUserFromBearerToken(req);
+    const limit = await consumeRateLimit(`stripe:cancel:${user.id}`, 20, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `操作回数が多すぎます。${limit.retryAfterSec}秒後に再試行してください。` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+      );
+    }
     const { requestId, paymentIntentId } = await req.json();
 
     const supabaseAdmin = getSupabaseAdmin();
+    const { data: me, error: meError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
+      .single();
+    if (meError || !me) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+    const strictAdmin = isStrictAdmin(me.role, user.email);
 
     let resolvedRequestId: string | null = requestId ?? null;
     let resolvedPaymentIntentId: string | null = paymentIntentId ?? null;
@@ -16,12 +38,15 @@ export async function POST(req: NextRequest) {
     if (!resolvedPaymentIntentId && resolvedRequestId) {
       const { data: requestRow, error } = await supabaseAdmin
         .from("requests")
-        .select("id, status, stripe_payment_intent_id, stripe_checkout_session_id")
+        .select("id, status, requester_id, stripe_payment_intent_id, stripe_checkout_session_id")
         .eq("id", resolvedRequestId)
         .single();
 
       if (error || !requestRow) {
         return NextResponse.json({ error: "Request not found" }, { status: 404 });
+      }
+      if (!strictAdmin && requestRow.requester_id && requestRow.requester_id !== user.id) {
+        return NextResponse.json({ error: "この依頼の決済操作権限がありません" }, { status: 403 });
       }
 
       requestStatus = requestRow.status;
@@ -74,6 +99,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (resolvedRequestId) {
+      const { data: rowForOwner } = await supabaseAdmin
+        .from("requests")
+        .select("requester_id")
+        .eq("id", resolvedRequestId)
+        .maybeSingle();
+      if (!rowForOwner) {
+        return NextResponse.json({ error: "Request not found" }, { status: 404 });
+      }
+      if (!strictAdmin && rowForOwner.requester_id !== user.id) {
+        return NextResponse.json({ error: "この依頼の決済操作権限がありません" }, { status: 403 });
+      }
       await supabaseAdmin
         .from("requests")
         .update({ status: "canceled" })
@@ -88,6 +124,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to cancel payment";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status =
+      message.includes("Authorization") || message.includes("Invalid user token")
+        ? 401
+        : message.includes("CSRF blocked")
+          ? 403
+          : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

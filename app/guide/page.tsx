@@ -2,7 +2,7 @@ export default function GuidePage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
       <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-bold text-slate-900">AO Matchについて</h1>
+        <h1 className="text-3xl font-bold text-slate-900">ユニブリについて</h1>
         <p className="mt-4 text-sm font-semibold text-emerald-600">サービス紹介文（250文字）</p>
         <p className="mt-4 text-base leading-8 text-slate-700">
           受験を、人生選択をもっと自由に、平等に。

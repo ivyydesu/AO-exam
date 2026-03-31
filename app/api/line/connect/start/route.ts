@@ -6,11 +6,12 @@ import { buildLineLoginUrl } from "../../../../../lib/line";
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUserFromBearerToken(req);
-    let returnTo = "";
+    let returnTo = "/profile/settings?tab=notifications";
     try {
       const body = await req.json();
-      if (body?.returnTo === "/profile/settings" || body?.returnTo === "/settings") {
-        returnTo = body.returnTo;
+      const candidate = typeof body?.returnTo === "string" ? body.returnTo : "";
+      if (candidate.startsWith("/profile/settings")) {
+        returnTo = candidate;
       }
     } catch {
       // bodyなしでも動作

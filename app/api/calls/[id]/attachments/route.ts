@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
+import { assertTrustedOrigin } from "../../../../../lib/security/csrf";
+import { consumeRateLimit } from "../../../../../lib/security/rateLimit";
+import { writeSecurityAudit } from "../../../../../lib/security/audit";
+import { getRequestMeta } from "../../../../../lib/security/requestMeta";
 
 const BUCKET = "call-attachments";
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -18,8 +22,17 @@ function safeName(name: string) {
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    assertTrustedOrigin(req);
     const user = await requireUserFromBearerToken(req);
+    const limit = await consumeRateLimit(`calls:attachments:${user.id}`, 25, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `Too many requests. Retry in ${limit.retryAfterSec}s.` },
+        { status: 429 }
+      );
+    }
     const supabaseAdmin = getSupabaseAdmin();
+    const { ip, userAgent } = getRequestMeta(req);
 
     const { data: requestRow, error: requestError } = await supabaseAdmin
       .from("requests")
@@ -32,6 +45,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     if (user.id !== requestRow.requester_id && user.id !== requestRow.tutor_id) {
+      await writeSecurityAudit(supabaseAdmin, {
+        actor_id: user.id,
+        event_type: "call_attachment_denied",
+        resource_type: "call",
+        resource_id: params.id,
+        result: "failure",
+        detail: "participant mismatch",
+        ip,
+        user_agent: userAgent
+      });
       return NextResponse.json({ error: "この通話ファイルにアクセスする権限がありません" }, { status: 403 });
     }
 
@@ -66,6 +89,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: signedError?.message || "プレビューURLの生成に失敗しました" }, { status: 400 });
     }
 
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: user.id,
+      event_type: "call_attachment_uploaded",
+      resource_type: "call",
+      resource_id: params.id,
+      result: "success",
+      detail: `file=${file.name} size=${file.size}`,
+      ip,
+      user_agent: userAgent
+    });
+
     return NextResponse.json({
       ok: true,
       file: {
@@ -84,6 +118,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ファイルアップロードに失敗しました";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: message },
+      { status: message.includes("CSRF blocked") ? 403 : 500 }
+    );
   }
 }

@@ -57,6 +57,7 @@ export default function ProfileSettingsPage() {
   const [tab, setTab] = useState<TabKey>("profile");
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
+  const [userRole, setUserRole] = useState<"student" | "tutor" | "admin">("student");
 
   const [form, setForm] = useState<TutorForm>(initialForm);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -122,6 +123,7 @@ export default function ProfileSettingsPage() {
         const profilePayload = await profileRes.json().catch(() => ({}));
         if (profileRes.ok && profilePayload.profile) {
           setForm((prev) => ({ ...prev, ...(profilePayload.profile as TutorForm) }));
+          setUserRole((profilePayload.profile.role as "student" | "tutor" | "admin") ?? "student");
         }
 
         const settingsPayload = await settingsRes.json().catch(() => ({}));
@@ -399,51 +401,11 @@ export default function ProfileSettingsPage() {
 
   return (
     <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen">
-      <div className="flex min-h-[100dvh] overflow-hidden bg-[#F9FAFB] text-[#111827]">
-      <aside className="w-20 shrink-0 border-r border-[#E5E7EB] bg-white/98 lg:w-64">
-        <div className="flex h-full flex-col">
-          <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-6 lg:py-8">
-            <button
-              type="button"
-              className={`flex items-center rounded-lg p-3 transition-colors hover:bg-[#F9FAFB] hover:text-[#10B981] ${
-                tab === "profile" ? "bg-[#10B981]/10 text-[#10B981]" : "text-[#6B7280]"
-              }`}
-              onClick={() => setTabAndQuery("profile")}
-            >
-              <DashboardIcon />
-              <span className="ml-3 hidden lg:block">プロフィール設定</span>
-            </button>
-
-            <button
-              type="button"
-              className={`flex items-center rounded-lg p-3 transition-colors hover:bg-[#F9FAFB] hover:text-[#10B981] ${
-                tab === "notifications" ? "bg-[#10B981]/10 text-[#10B981]" : "text-[#6B7280]"
-              }`}
-              onClick={() => setTabAndQuery("notifications")}
-            >
-              <BellIcon />
-              <span className="ml-3 hidden lg:block">通知設定</span>
-            </button>
-            <button
-              type="button"
-              className={`flex items-center rounded-lg p-3 transition-colors hover:bg-[#F9FAFB] hover:text-[#10B981] ${
-                tab === "manage" || tab === "login" ? "bg-[#10B981]/10 text-[#10B981]" : "text-[#6B7280]"
-              }`}
-              onClick={() => setTabAndQuery("login")}
-            >
-              <SettingsIcon />
-              <span className="ml-3 hidden lg:block">ログイン設定</span>
-            </button>
-          </nav>
-
-          <div className="border-t border-[#E5E7EB] p-3" />
-        </div>
-      </aside>
-
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#E5E7EB] bg-[#F9FAFB]/90 px-8 py-4 backdrop-blur-md">
+      <div className="min-h-[100dvh] overflow-hidden bg-[#F9FAFB] text-[#111827]">
+      <main className="min-w-0 overflow-y-auto">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#E5E7EB] bg-[#F9FAFB]/90 px-4 py-4 backdrop-blur-md sm:px-6 lg:px-8">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-[#111827] md:text-4xl">
+            <h1 className="text-2xl font-bold tracking-tight text-[#111827] sm:text-3xl md:text-4xl">
               {tab === "manage"
                 ? "設定"
                 : tab === "profile"
@@ -462,7 +424,15 @@ export default function ProfileSettingsPage() {
                   : "メールアドレス・パスワードを管理"}
             </p>
           </div>
-          <div className="hidden md:block" />
+          {tab !== "manage" ? (
+            <button
+              type="button"
+              onClick={() => setTabAndQuery("manage")}
+              className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] hover:bg-[#F9FAFB]"
+            >
+              ← 設定メニューへ戻る
+            </button>
+          ) : <div className="hidden md:block" />}
         </header>
 
         {tab === "manage" && (
@@ -473,17 +443,39 @@ export default function ProfileSettingsPage() {
                 <p className="mt-2 text-sm text-[#6B7280]">プロフィール設定・通知設定・ログイン設定に移動できます。</p>
               </div>
                 <div className="divide-y divide-[#E5E7EB]">
-                <ManageListRow title="プロフィール設定" desc="公開プロフィール、写真、基本情報を編集します。" onClick={() => setTabAndQuery("profile")} />
-                <ManageListRow title="学生証認証" desc="学生証の表裏と入学/卒業予定年度を提出します。" onClick={() => router.push("/verification/student-id")} />
+                {userRole === "tutor" ? (
+                  <>
+                    <ManageListRow title="プロフィール設定" desc="公開プロフィール、写真、基本情報を編集します。" onClick={() => setTabAndQuery("profile")} />
+                    <ManageListRow title="学生証認証" desc="学生証の表裏と入学/卒業予定年度を提出します。" onClick={() => router.push("/verification/student-id")} />
+                    <ManageListRow title="口座登録" desc="Stripe Connect の振込先口座を設定します。" onClick={() => router.push("/profile/payouts")} />
+                  </>
+                ) : null}
                 <ManageListRow title="通知設定" desc="メール通知、LINE通知、通知の受け取り方を管理します。" onClick={() => setTabAndQuery("notifications")} />
                 <ManageListRow title="ログイン設定" desc="メールアドレス変更、パスワード変更を管理します。" onClick={() => setTabAndQuery("login")} />
               </div>
             </div>
-            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
+            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 ユニブリ. All rights reserved.</p>
           </div>
         )}
 
         {tab === "profile" && (
+          userRole !== "tutor" ? (
+            <div className="mx-auto w-full max-w-[820px] px-4 pb-20 pt-8 sm:px-6 lg:px-8">
+              <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-sm">
+                <h2 className="text-2xl font-bold text-[#111827]">この設定は大学生メンター向けです</h2>
+                <p className="mt-3 text-sm text-[#6B7280]">高校生アカウントでは、公開プロフィール・学生証認証・振込先口座設定は表示されません。</p>
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setTabAndQuery("manage")}
+                    className="rounded-xl bg-[#10B981] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0ea371]"
+                  >
+                    設定メニューへ戻る
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="mx-auto w-full max-w-[1180px] px-4 pb-20 pt-4 sm:px-6 lg:px-8">
             <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.03)]">
               <div className="relative h-40 w-full bg-[#E0E7FF]" style={{
@@ -599,24 +591,34 @@ export default function ProfileSettingsPage() {
                 </div>
 
                 <div className="mt-8 flex justify-end gap-3">
-                  <div className="mr-auto rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-xs text-[#6B7280]">
-                    <p className="font-semibold text-[#111827]">学生証認証</p>
-                    <p className="mt-1">
-                      {verification.status === "approved"
-                        ? "承認済み（プロフィール公開可能）"
-                        : verification.status === "pending"
-                          ? "審査中（公開は承認後）"
-                          : verification.status === "rejected"
-                            ? "差し戻し（再提出してください）"
-                            : "未提出（公開には提出が必要）"}
-                    </p>
-                    {verification.admission_year && verification.graduation_year ? (
-                      <p className="mt-1">入学 {verification.admission_year} / 卒業予定 {verification.graduation_year}</p>
-                    ) : null}
-                    {verification.reason ? <p className="mt-1 text-[#B91C1C]">理由: {verification.reason}</p> : null}
-                    <Link href="/verification/student-id" className="mt-2 inline-block font-semibold text-[#10B981] hover:underline">
-                      学生証認証ページを開く
-                    </Link>
+                  <div className="mr-auto grid gap-3">
+                    <div className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-xs text-[#6B7280]">
+                      <p className="font-semibold text-[#111827]">学生証認証</p>
+                      <p className="mt-1">
+                        {verification.status === "approved"
+                          ? "承認済み（プロフィール公開可能）"
+                          : verification.status === "pending"
+                            ? "審査中（公開は承認後）"
+                            : verification.status === "rejected"
+                              ? "差し戻し（再提出してください）"
+                              : "未提出（公開には提出が必要）"}
+                      </p>
+                      {verification.admission_year && verification.graduation_year ? (
+                        <p className="mt-1">入学 {verification.admission_year} / 卒業予定 {verification.graduation_year}</p>
+                      ) : null}
+                      {verification.reason ? <p className="mt-1 text-[#B91C1C]">理由: {verification.reason}</p> : null}
+                      <Link href="/verification/student-id" className="mt-2 inline-block font-semibold text-[#10B981] hover:underline">
+                        学生証認証ページを開く
+                      </Link>
+                    </div>
+
+                    <div className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-xs text-[#6B7280]">
+                      <p className="font-semibold text-[#111827]">振込先口座</p>
+                      <p className="mt-1">口座登録・更新は専用ページから行ってください。</p>
+                      <Link href="/profile/payouts" className="mt-2 inline-block font-semibold text-[#10B981] hover:underline">
+                        口座登録ページを開く
+                      </Link>
+                    </div>
                   </div>
                   <Link href="/profile/settings?tab=manage" className="rounded-lg border border-transparent px-6 py-2.5 text-sm font-medium text-[#6B7280] hover:border-[#E5E7EB] hover:bg-[#F9FAFB]">
                     キャンセル
@@ -632,8 +634,9 @@ export default function ProfileSettingsPage() {
                 </div>
               </form>
             </div>
-            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
+            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 ユニブリ. All rights reserved.</p>
           </div>
+          )
         )}
 
         {tab === "notifications" && (
@@ -656,7 +659,7 @@ export default function ProfileSettingsPage() {
                   <SettingRow title="新しい相談依頼" desc="学生から新しいメンター相談の申し込みがあった時" checked={draftSettings.email_new_request} onChange={(v) => setDraftSettings({ ...draftSettings, email_new_request: v })} />
                   <SettingRow title="メッセージ受信" desc="チャットで新しいメッセージを受け取った時" checked={draftSettings.email_new_message} onChange={(v) => setDraftSettings({ ...draftSettings, email_new_message: v })} />
                   <SettingRow title="お気に入り登録通知" desc="あなたのプロフィールが学生にお気に入り登録された時" checked={draftSettings.email_favorite} onChange={(v) => setDraftSettings({ ...draftSettings, email_favorite: v })} />
-                  <SettingRow title="運営からのお知らせ" desc="AO Match運営チームからのニュースや機能アップデート" checked={draftSettings.email_ops} onChange={(v) => setDraftSettings({ ...draftSettings, email_ops: v })} />
+                  <SettingRow title="運営からのお知らせ" desc="ユニブリ運営チームからのニュースや機能アップデート" checked={draftSettings.email_ops} onChange={(v) => setDraftSettings({ ...draftSettings, email_ops: v })} />
                 </div>
               </section>
 
@@ -703,7 +706,7 @@ export default function ProfileSettingsPage() {
                 </button>
               </div>
             </form>
-            <p className="text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
+            <p className="text-center text-xs text-[#6B7280]/70">© 2024 ユニブリ. All rights reserved.</p>
           </div>
         )}
 
@@ -817,7 +820,7 @@ export default function ProfileSettingsPage() {
 
             
 
-            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
+            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 ユニブリ. All rights reserved.</p>
           </div>
         )}
 

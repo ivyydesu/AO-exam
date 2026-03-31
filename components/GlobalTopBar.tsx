@@ -116,7 +116,7 @@ export default function GlobalTopBar() {
     () => [
       { href: "/search", label: "先輩を探す", active: pathname.startsWith("/search") || pathname.startsWith("/service/") },
       { href: "/chat", label: "メッセージ", active: pathname.startsWith("/chat") },
-      { href: "/guide", label: "AO Matchについて", active: pathname.startsWith("/guide") }
+      { href: "/guide", label: "ユニブリについて", active: pathname.startsWith("/guide") }
     ],
     [pathname]
   );
@@ -140,10 +140,10 @@ export default function GlobalTopBar() {
   }
 
   return (
-    <header className="relative z-40 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
+    <header className="app-topbar relative z-40 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-20 w-full max-w-[1220px] items-center justify-between gap-6 px-6">
         <div className="flex min-w-0 items-center gap-10">
-          <BrandLogo href="/demo" size="sm" textClassName="text-[17px] font-bold tracking-tight text-[#111827]" />
+          <BrandLogo href="/home" size="sm" textClassName="text-[17px] font-bold tracking-tight text-[#111827]" />
           <nav className="hidden items-center gap-3 md:flex">
             {links.map((link) => (
               <Link key={link.href} href={link.href} className={navClass(link.active)}>
@@ -167,33 +167,35 @@ export default function GlobalTopBar() {
               <BellIcon />
             </Link>
 
-            <div className={`${notificationOpen ? "block" : "hidden"} absolute right-0 top-full z-50 w-80 pt-3`}>
-              <div className="rounded-2xl border border-[#E5E7EB] bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
-                <div className="px-3 py-2">
-                  <p className="text-sm font-semibold text-[#111827]">最新の通知</p>
-                </div>
-                <div className="space-y-1">
-                  {notificationItems.map((item) => (
+            {notificationOpen ? (
+              <div className="absolute right-0 top-full z-50 w-80 pt-3">
+                <div className="rounded-2xl border border-[#E5E7EB] bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+                  <div className="px-3 py-2">
+                    <p className="text-sm font-semibold text-[#111827]">最新の通知</p>
+                  </div>
+                  <div className="space-y-1">
+                    {notificationItems.map((item) => (
+                      <Link
+                        key={item.title}
+                        href={item.href}
+                        className="block rounded-xl px-3 py-3 transition hover:bg-[#F9FAFB]"
+                      >
+                        <p className="text-sm font-medium text-[#111827]">{item.title}</p>
+                        <p className="mt-1 text-xs text-[#6B7280]">{item.detail}</p>
+                      </Link>
+                    ))}
+                  </div>
+                  <div className="px-2 pt-1">
                     <Link
-                      key={item.title}
-                      href={item.href}
-                      className="block rounded-xl px-3 py-3 transition hover:bg-[#F9FAFB]"
+                      href="/notifications"
+                      className="block rounded-xl px-3 py-3 text-sm font-medium text-[#10B981] transition hover:bg-[#F9FAFB]"
                     >
-                      <p className="text-sm font-medium text-[#111827]">{item.title}</p>
-                      <p className="mt-1 text-xs text-[#6B7280]">{item.detail}</p>
+                      通知センターを見る
                     </Link>
-                  ))}
-                </div>
-                <div className="px-2 pt-1">
-                  <Link
-                    href="/notifications"
-                    className="block rounded-xl px-3 py-3 text-sm font-medium text-[#10B981] transition hover:bg-[#F9FAFB]"
-                  >
-                    通知センターを見る
-                  </Link>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : null}
           </div>
 
           <div className="h-10 w-px bg-[#E5E7EB]" />
@@ -217,38 +219,40 @@ export default function GlobalTopBar() {
               </div>
             </button>
 
-            <div className={`${menuOpen ? "block" : "hidden"} absolute right-0 top-full z-50 w-56 pt-3`}>
-              <div className="rounded-2xl border border-[#E5E7EB] bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
-                <Link
-                  href={profile.isGuest ? "/auth/login" : "/profile/settings?tab=manage"}
-                  className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
-                >
-                  アカウント設定
-                </Link>
-                <Link
-                  href={profile.isGuest ? "/auth/login" : profile.role === "admin" ? "/admin" : "/profile/management"}
-                  className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
-                >
-                  管理ページ
-                </Link>
-                {profile.isGuest ? (
+            {menuOpen ? (
+              <div className="absolute right-0 top-full z-50 w-56 pt-3">
+                <div className="rounded-2xl border border-[#E5E7EB] bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
                   <Link
-                    href="/auth/login"
-                    className="block w-full rounded-xl px-4 py-3.5 text-left text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
+                    href={profile.isGuest ? "/auth/login" : "/profile/settings?tab=manage"}
+                    className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
                   >
-                    ログイン
+                    アカウント設定
                   </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={logout}
-                    className="block w-full rounded-xl px-4 py-3.5 text-left text-[15px] font-medium text-[#374151] transition hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+                  <Link
+                    href={profile.isGuest ? "/auth/login" : profile.role === "admin" ? "/admin" : "/profile/management"}
+                    className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
                   >
-                    ログアウト
-                  </button>
-                )}
+                    管理ページ
+                  </Link>
+                  {profile.isGuest ? (
+                    <Link
+                      href="/auth/login"
+                      className="block w-full rounded-xl px-4 py-3.5 text-left text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
+                    >
+                      ログイン
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={logout}
+                      className="block w-full rounded-xl px-4 py-3.5 text-left text-[15px] font-medium text-[#374151] transition hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+                    >
+                      ログアウト
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
       </div>

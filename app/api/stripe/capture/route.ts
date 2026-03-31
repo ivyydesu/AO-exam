@@ -1,15 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
+import { ensurePaidChatGroup } from "../../../../lib/chatGroups";
+import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+import { assertTrustedOrigin } from "../../../../lib/security/csrf";
+import { consumeRateLimit } from "../../../../lib/security/rateLimit";
+import { isStrictAdmin } from "../../../../lib/auth/adminAllowlist";
 
 export async function POST(req: NextRequest) {
   try {
+    assertTrustedOrigin(req);
+    const user = await requireUserFromBearerToken(req);
+    const limit = await consumeRateLimit(`stripe:capture:${user.id}`, 20, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `操作回数が多すぎます。${limit.retryAfterSec}秒後に再試行してください。` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+      );
+    }
     const { requestId, paymentIntentId } = await req.json();
 
     const supabaseAdmin = getSupabaseAdmin();
+    const { data: me, error: meError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
+      .single();
+    if (meError || !me) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+    const strictAdmin = isStrictAdmin(me.role, user.email);
 
     let resolvedRequestId: string | null = requestId ?? null;
     let resolvedPaymentIntentId: string | null = paymentIntentId ?? null;
+    let requestOwnerId: string | null = null;
 
     if (!resolvedPaymentIntentId && resolvedRequestId) {
       const { data: requestRow, error } = await supabaseAdmin
@@ -20,6 +44,11 @@ export async function POST(req: NextRequest) {
 
       if (error || !requestRow) {
         return NextResponse.json({ error: "Request not found" }, { status: 404 });
+      }
+
+      requestOwnerId = requestRow.requester_id;
+      if (!strictAdmin && requestRow.requester_id !== user.id) {
+        return NextResponse.json({ error: "この依頼の決済操作権限がありません" }, { status: 403 });
       }
 
       resolvedPaymentIntentId = requestRow.stripe_payment_intent_id;
@@ -56,6 +85,9 @@ export async function POST(req: NextRequest) {
           ? captured.metadata.request_id
           : null;
     }
+    if (!resolvedRequestId) {
+      return NextResponse.json({ error: "requestId metadata is missing on PaymentIntent" }, { status: 400 });
+    }
 
     if (resolvedRequestId) {
       const { data: requestForChat } = await supabaseAdmin
@@ -63,6 +95,13 @@ export async function POST(req: NextRequest) {
         .select("id, title, requester_id, tutor_id")
         .eq("id", resolvedRequestId)
         .maybeSingle();
+      if (!requestForChat) {
+        return NextResponse.json({ error: "Request not found" }, { status: 404 });
+      }
+      requestOwnerId = requestForChat.requester_id;
+      if (!strictAdmin && requestForChat.requester_id !== user.id) {
+        return NextResponse.json({ error: "この依頼の決済操作権限がありません" }, { status: 403 });
+      }
 
       await supabaseAdmin
         .from("requests")
@@ -70,6 +109,12 @@ export async function POST(req: NextRequest) {
         .eq("id", resolvedRequestId);
 
       if (requestForChat?.requester_id && requestForChat?.tutor_id) {
+        await ensurePaidChatGroup(
+          supabaseAdmin,
+          requestForChat.id,
+          requestForChat.requester_id,
+          requestForChat.tutor_id
+        );
         const { count } = await supabaseAdmin
           .from("messages")
           .select("id", { count: "exact", head: true })
@@ -77,11 +122,19 @@ export async function POST(req: NextRequest) {
 
         if (!count || count === 0) {
           const starterSender = requestForChat.tutor_id ?? requestForChat.requester_id;
-          await supabaseAdmin.from("messages").insert({
+          const insertResult = await supabaseAdmin.from("messages").insert({
             request_id: requestForChat.id,
             sender_id: starterSender,
-            content: `【AO Match】支払いが完了しました。ここからチャットで相談を開始できます。`
+            content: `【ユニブリ】支払いが完了しました。専用チャットグループを作成しました。ここから相談を開始できます。`,
+            message_kind: "system"
           });
+          if (insertResult.error && insertResult.error.message.includes("column")) {
+            await supabaseAdmin.from("messages").insert({
+              request_id: requestForChat.id,
+              sender_id: starterSender,
+              content: `【ユニブリ】支払いが完了しました。専用チャットグループを作成しました。ここから相談を開始できます。`
+            });
+          }
         }
       }
     }
@@ -89,11 +142,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       paymentIntentId: captured.id,
-      status: captured.status
+      status: captured.status,
+      requesterId: requestOwnerId
     });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to capture payment";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status =
+      message.includes("Authorization") || message.includes("Invalid user token")
+        ? 401
+        : message.includes("CSRF blocked")
+          ? 403
+          : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

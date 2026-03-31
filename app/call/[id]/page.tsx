@@ -244,7 +244,7 @@ export default function VideoCallPage({ params }: { params: { id: string } }) {
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
-  const [currentUserName, setCurrentUserName] = useState("AO Match User");
+  const [currentUserName, setCurrentUserName] = useState("ユニブリ User");
   const [currentUserRole, setCurrentUserRole] = useState("student");
   const [canManage, setCanManage] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -263,7 +263,7 @@ export default function VideoCallPage({ params }: { params: { id: string } }) {
     const authSession = data.session;
     if (!authSession) throw new Error("ログインが必要です");
     setCurrentUserId(authSession.user.id);
-    setCurrentUserName(authSession.user.user_metadata?.full_name || authSession.user.email || "AO Match User");
+    setCurrentUserName(authSession.user.user_metadata?.full_name || authSession.user.email || "ユニブリ User");
     return { Authorization: `Bearer ${authSession.access_token}` };
   };
 
@@ -320,21 +320,26 @@ export default function VideoCallPage({ params }: { params: { id: string } }) {
     const loadMessages = async () => {
       const { data: rows } = await supabase
         .from("messages")
-        .select("id, sender_id, content, created_at")
+        .select("id, sender_id, content, created_at, expires_at, deleted_at")
         .eq("request_id", params.id)
         .order("created_at", { ascending: true });
       if (!active) return;
-      const senderIds = Array.from(new Set((rows ?? []).map((row) => row.sender_id)));
+      const visibleRows = (rows ?? []).filter((row: { expires_at?: string | null; deleted_at?: string | null }) => {
+        if (row.deleted_at) return false;
+        if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) return false;
+        return true;
+      });
+      const senderIds = Array.from(new Set(visibleRows.map((row) => row.sender_id)));
       const { data: profiles } = senderIds.length
         ? await supabase.from("profiles").select("id, full_name").in("id", senderIds)
         : { data: [] as Array<{ id: string; full_name: string }> };
       const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile.full_name]));
       setMessages(
-        (rows ?? []).map((row) => ({
+        visibleRows.map((row) => ({
           ...parseMessageContent(row.content),
           id: row.id,
           senderId: row.sender_id,
-          senderName: profileMap.get(row.sender_id) || "AO Match User",
+          senderName: profileMap.get(row.sender_id) || "ユニブリ User",
           createdAt: row.created_at
         }))
       );
@@ -348,14 +353,23 @@ export default function VideoCallPage({ params }: { params: { id: string } }) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `request_id=eq.${params.id}` },
         async (payload) => {
-          const row = payload.new as { id: string; sender_id: string; content: string; created_at: string };
+          const row = payload.new as {
+            id: string;
+            sender_id: string;
+            content: string;
+            created_at: string;
+            expires_at?: string | null;
+            deleted_at?: string | null;
+          };
+          if (row.deleted_at) return;
+          if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) return;
           const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", row.sender_id).single();
           if (!active) return;
           const parsed = parseMessageContent(row.content);
           setMessages((prev) =>
             prev.some((message) => message.id === row.id)
               ? prev
-              : [...prev, { ...parsed, id: row.id, senderId: row.sender_id, senderName: profile?.full_name || "AO Match User", createdAt: row.created_at }]
+              : [...prev, { ...parsed, id: row.id, senderId: row.sender_id, senderName: profile?.full_name || "ユニブリ User", createdAt: row.created_at }]
           );
         }
       )
@@ -615,8 +629,8 @@ export default function VideoCallPage({ params }: { params: { id: string } }) {
   };
 
   const sessionTitle = useMemo(() => {
-    if (participants.length >= 2) return `AO Match Consultation - ${participants.map((participant) => participant.name).join(" & ")}`;
-    return "AO Match Consultation";
+    if (participants.length >= 2) return `ユニブリ Consultation - ${participants.map((participant) => participant.name).join(" & ")}`;
+    return "ユニブリ Consultation";
   }, [participants]);
 
   useEffect(() => {
@@ -636,7 +650,7 @@ export default function VideoCallPage({ params }: { params: { id: string } }) {
   }, [messages]);
 
   return (
-    <div className="ao-call-shell fixed inset-x-0 bottom-0 top-[81px] z-20 w-screen overflow-hidden bg-slate-100 text-slate-900">
+    <div className="ao-call-shell h-full w-full overflow-hidden bg-slate-100 text-slate-900">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
       <div className="grid h-full grid-cols-[280px_minmax(0,1fr)_290px] xl:grid-cols-[300px_minmax(0,1fr)_310px]">
         <aside className="flex h-full flex-col border-r border-slate-200 bg-white">
@@ -799,7 +813,7 @@ export default function VideoCallPage({ params }: { params: { id: string } }) {
                       <p className="text-xs text-slate-400">{participant.role === "tutor" ? "大学生メンター" : "高校生"}</p>
                     </div>
                   </div>
-                  <div className="mt-3 text-xs text-slate-400">{participant.school || "AO Match 参加ユーザー"}</div>
+                  <div className="mt-3 text-xs text-slate-400">{participant.school || "ユニブリ 参加ユーザー"}</div>
                 </div>
               ))}
             </div>

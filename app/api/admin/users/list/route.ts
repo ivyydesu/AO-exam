@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
-import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
+import { requireStrictAdminFromBearer } from "../../../../../lib/auth/requireStrictAdmin";
+import { writeSecurityAudit } from "../../../../../lib/security/audit";
+import { getRequestMeta } from "../../../../../lib/security/requestMeta";
 
 type VerificationMap = Record<string, { status: string; reviewed_at: string | null }>;
 type ProfileRow = {
@@ -30,18 +31,8 @@ function isMissingSuspendColumns(message: string) {
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUserFromBearerToken(req);
-    const supabaseAdmin = getSupabaseAdmin();
-
-    const { data: me, error: meError } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (meError || !me || me.role !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
+    const { user, supabaseAdmin } = await requireStrictAdminFromBearer(req);
+    const { ip, userAgent } = getRequestMeta(req);
 
     const role = req.nextUrl.searchParams.get("role");
     const keyword = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase();
@@ -99,9 +90,22 @@ export async function GET(req: NextRequest) {
       verification_reviewed_at: verificationMap[row.id]?.reviewed_at ?? null
     }));
 
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: user.id,
+      event_type: "admin_users_list_viewed",
+      resource_type: "user",
+      result: "success",
+      detail: `role=${role || "-"} q=${keyword || "-"}`,
+      ip,
+      user_agent: userAgent
+    });
+
     return NextResponse.json({ items });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: 401 });
+    return NextResponse.json(
+      { error: message },
+      { status: message.includes("Admin") ? 403 : 401 }
+    );
   }
 }

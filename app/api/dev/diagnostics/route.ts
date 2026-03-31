@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { requireStrictAdminFromBearer } from "../../../../lib/auth/requireStrictAdmin";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  try {
+    await requireStrictAdminFromBearer(req);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const supabaseUrl = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
   const env = {

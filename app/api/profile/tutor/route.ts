@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+import { sanitizePlainText } from "../../../../lib/security/input";
+import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -85,6 +87,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    assertTrustedOrigin(req);
     const user = await requireUserFromBearerToken(req);
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -99,15 +102,15 @@ export async function POST(req: NextRequest) {
     }
 
     const form = await req.formData();
-    const fullName = String(form.get("full_name") ?? "");
-    const school = String(form.get("school") ?? "");
-    const university = String(form.get("university") ?? "");
-    const department = String(form.get("department") ?? "");
-    const seminar = String(form.get("seminar") ?? "");
-    const grade = String(form.get("grade") ?? "");
-    const researchTheme = String(form.get("research_theme") ?? "");
-    const coachingExperience = String(form.get("coaching_experience") ?? "");
-    const bio = String(form.get("bio") ?? "");
+    const fullName = sanitizePlainText(String(form.get("full_name") ?? ""), 80);
+    const school = sanitizePlainText(String(form.get("school") ?? ""), 120);
+    const university = sanitizePlainText(String(form.get("university") ?? ""), 120);
+    const department = sanitizePlainText(String(form.get("department") ?? ""), 120);
+    const seminar = sanitizePlainText(String(form.get("seminar") ?? ""), 120);
+    const grade = sanitizePlainText(String(form.get("grade") ?? ""), 20);
+    const researchTheme = sanitizePlainText(String(form.get("research_theme") ?? ""), 400);
+    const coachingExperience = sanitizePlainText(String(form.get("coaching_experience") ?? ""), 800);
+    const bio = sanitizePlainText(String(form.get("bio") ?? ""), 1200);
     const avatarFile = form.get("avatar");
     const coverFile = form.get("cover");
 
@@ -215,6 +218,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to save tutor profile";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message.includes("CSRF blocked") ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

@@ -22,7 +22,7 @@ export function BrandIcon({ size = "md" }: { size?: Size }) {
 }
 
 export default function BrandLogo({
-  href = "/demo",
+  href = "/home",
   size = "md",
   textClassName = "text-xl font-bold tracking-tight text-slate-900"
 }: {
@@ -33,8 +33,7 @@ export default function BrandLogo({
   return (
     <Link href={href} className="flex items-center gap-3">
       <BrandIcon size={size} />
-      <span className={textClassName}>AO Match</span>
+      <span className={textClassName}>ユニブリ</span>
     </Link>
   );
 }
-

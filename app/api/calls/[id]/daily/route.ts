@@ -5,15 +5,39 @@ import { getCallAccessContext } from "../../../../../lib/calls";
 import { getAppModeFromRequest } from "../../../../../lib/appMode";
 import { buildDailyRoomUrl, createDailyMeetingToken, ensureDailyRoom, generateDailyRoomName } from "../../../../../lib/daily";
 import { isDailyProvisioningError, isVideoCallsEnabled, sanitizeVideoCallError } from "../../../../../lib/videoCalls";
+import { assertTrustedOrigin } from "../../../../../lib/security/csrf";
+import { consumeRateLimit } from "../../../../../lib/security/rateLimit";
+import { writeSecurityAudit } from "../../../../../lib/security/audit";
+import { getRequestMeta } from "../../../../../lib/security/requestMeta";
+import { isStrictAdmin } from "../../../../../lib/auth/adminAllowlist";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    assertTrustedOrigin(req);
     const user = await requireUserFromBearerToken(req);
+    const limit = await consumeRateLimit(`calls:daily:${user.id}`, 30, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `Too many requests. Retry in ${limit.retryAfterSec}s.` },
+        { status: 429 }
+      );
+    }
     const supabaseAdmin = getSupabaseAdmin();
+    const { ip, userAgent } = getRequestMeta(req);
     const { data: me } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).maybeSingle();
-    const isAdmin = me?.role === "admin";
+    const isAdmin = isStrictAdmin(me?.role, user.email);
 
     if (!isVideoCallsEnabled()) {
+      await writeSecurityAudit(supabaseAdmin, {
+        actor_id: user.id,
+        event_type: "call_daily_bootstrap_denied",
+        resource_type: "call",
+        resource_id: params.id,
+        result: "failure",
+        detail: "video disabled",
+        ip,
+        user_agent: userAgent
+      });
       return NextResponse.json(
         { error: isAdmin ? "VIDEO_CALLS_ENABLED が false のため通話機能は停止中です" : "現在ビデオ通話機能は利用できません" },
         { status: 503 }
@@ -64,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const token = await createDailyMeetingToken({
       roomName: room.name,
-      userName: user.user_metadata?.full_name || user.email || "AO Match User",
+      userName: user.user_metadata?.full_name || user.email || "ユニブリ User",
       userId: user.id,
       isOwner: context.canManage
     });
@@ -106,6 +130,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       avatarUrl: avatarMap[item.id] ?? ""
     }));
 
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: user.id,
+      event_type: "call_daily_bootstrap_ok",
+      resource_type: "call",
+      resource_id: params.id,
+      result: "success",
+      detail: `room=${room.name}`,
+      ip,
+      user_agent: userAgent
+    });
+
     return NextResponse.json({
       ok: true,
       provider: "daily",
@@ -127,6 +162,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const message = error instanceof Error ? error.message : "Daily通話情報の取得に失敗しました";
     console.error("daily call bootstrap error:", message);
     const hiddenMessage = sanitizeVideoCallError(message);
-    return NextResponse.json({ error: hiddenMessage }, { status: isDailyProvisioningError(message) ? 503 : 400 });
+    return NextResponse.json(
+      { error: hiddenMessage },
+      { status: message.includes("CSRF blocked") ? 403 : isDailyProvisioningError(message) ? 503 : 400 }
+    );
   }
 }

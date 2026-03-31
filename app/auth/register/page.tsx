@@ -75,10 +75,10 @@ function RegisterPageContent() {
     <div className="mx-auto max-w-5xl">
       <div className="overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="grid md:grid-cols-[42%_58%]">
-          <section className="relative isolate min-h-[260px] overflow-hidden bg-gradient-to-b from-[#0E4FA8] to-[#1C82F2] p-8 text-white">
+          <section className="relative isolate min-h-[260px] overflow-hidden bg-gradient-to-b from-[#10b981] to-[#059669] p-8 text-white">
             <div className="relative z-10 max-w-[320px] pr-10">
               <p className="text-sm opacity-90">Welcome to</p>
-              <h1 className="mt-2 text-3xl font-semibold">AO Match</h1>
+              <h1 className="mt-2 text-3xl font-semibold">ユニブリ</h1>
               <p className="mt-5 text-sm opacity-90">
               AO入試の先輩マッチング。高校生と大学生をつなぐアカウントを作成します。
               </p>
@@ -119,10 +119,12 @@ function RegisterPageContent() {
               {notice && <p className="text-sm text-sea">{notice}</p>}
               <div className="flex gap-3">
                 <button className="btn btn-primary" disabled={loading}>
-                  {loading ? "登録中..." : "Sign Up"}
+                  {loading ? "登録中..." : "登録する"}
                 </button>
-                <Link className="btn btn-secondary" href={`/auth/login?role=${role}`}>
-                  Sign In
+              </div>
+              <div className="pt-1">
+                <Link className="text-[10px] text-sea/70 hover:text-sea underline underline-offset-2" href={`/auth/login?role=${role}`}>
+                  sign in
                 </Link>
               </div>
             </form>

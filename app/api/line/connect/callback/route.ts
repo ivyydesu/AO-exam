@@ -2,14 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
 import { exchangeLineCodeForProfile } from "../../../../../lib/line";
 
+function withLineParam(path: string, value: string) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}line=${encodeURIComponent(value)}`;
+}
+
 export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams;
   const code = search.get("code");
   const state = search.get("state");
-  const pathFromState = state?.includes("::/profile/settings") ? "/profile/settings" : "/settings";
+  const defaultReturnPath = "/profile/settings?tab=notifications";
+  const pathFromState = state?.includes("::/profile/settings")
+    ? state.split("::")[1] || defaultReturnPath
+    : defaultReturnPath;
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL(`${pathFromState}?line=error_missing_params`, req.url));
+    return NextResponse.redirect(new URL(withLineParam(pathFromState, "error_missing_params"), req.url));
   }
 
   const supabaseAdmin = getSupabaseAdmin();
@@ -20,16 +28,20 @@ export async function GET(req: NextRequest) {
     .single();
 
   if (stateError || !stateRow) {
-    return NextResponse.redirect(new URL(`${pathFromState}?line=error_invalid_state`, req.url));
+    return NextResponse.redirect(new URL(withLineParam(pathFromState, "error_invalid_state"), req.url));
   }
 
   if (new Date(stateRow.expires_at).getTime() < Date.now()) {
     await supabaseAdmin.from("line_link_states").delete().eq("state", state);
-    const path = state.includes("::/profile/settings") ? "/profile/settings" : "/settings";
-    return NextResponse.redirect(new URL(`${path}?line=error_state_expired`, req.url));
+    const path = state.includes("::/profile/settings")
+      ? state.split("::")[1] || defaultReturnPath
+      : defaultReturnPath;
+    return NextResponse.redirect(new URL(withLineParam(path, "error_state_expired"), req.url));
   }
 
-  const returnPath = stateRow.state.includes("::/profile/settings") ? "/profile/settings" : "/settings";
+  const returnPath = stateRow.state.includes("::/profile/settings")
+    ? stateRow.state.split("::")[1] || defaultReturnPath
+    : defaultReturnPath;
 
   try {
     const lineProfile = await exchangeLineCodeForProfile(code);
@@ -42,12 +54,12 @@ export async function GET(req: NextRequest) {
     await supabaseAdmin.from("line_link_states").delete().eq("state", state);
 
     if (updateError) {
-      return NextResponse.redirect(new URL(`${returnPath}?line=error_save_failed`, req.url));
+      return NextResponse.redirect(new URL(withLineParam(returnPath, "error_save_failed"), req.url));
     }
 
-    return NextResponse.redirect(new URL(`${returnPath}?line=connected`, req.url));
+    return NextResponse.redirect(new URL(withLineParam(returnPath, "connected"), req.url));
   } catch {
     await supabaseAdmin.from("line_link_states").delete().eq("state", state);
-    return NextResponse.redirect(new URL(`${returnPath}?line=error_exchange_failed`, req.url));
+    return NextResponse.redirect(new URL(withLineParam(returnPath, "error_exchange_failed"), req.url));
   }
 }

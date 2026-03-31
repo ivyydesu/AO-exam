@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const now = new Date().toLocaleString("ja-JP");
     await sendLinePushMessage(
       profile.line_user_id,
-      `AO Match テスト通知\nrole: ${profile.role}\n時刻: ${now}`
+      `ユニブリ テスト通知\nrole: ${profile.role}\n時刻: ${now}`
     );
 
     return NextResponse.json({ ok: true });

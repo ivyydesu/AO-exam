@@ -37,6 +37,18 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
+      const missingReportsTable =
+        error.message.includes("Could not find the table 'public.reports'") ||
+        error.message.toLowerCase().includes("relation \"reports\" does not exist");
+      if (missingReportsTable) {
+        return NextResponse.json(
+          {
+            error: "DBに reports テーブルがありません。Supabase SQLを実行してスキーマを反映してください。",
+            code: "REPORTS_TABLE_MISSING"
+          },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 

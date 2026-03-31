@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "../../../../lib/supabase/server";
-import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+import { requireStrictAdminFromBearer } from "../../../../lib/auth/requireStrictAdmin";
+import { assertTrustedOrigin } from "../../../../lib/security/csrf";
+import { consumeRateLimit } from "../../../../lib/security/rateLimit";
+import { writeSecurityAudit } from "../../../../lib/security/audit";
+import { getRequestMeta } from "../../../../lib/security/requestMeta";
 
 type ReviewBody = {
   userId: string;
@@ -18,21 +21,19 @@ function isMissingVerificationTable(message: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const currentUser = await requireUserFromBearerToken(req);
+    assertTrustedOrigin(req);
+    const { user: currentUser, supabaseAdmin } = await requireStrictAdminFromBearer(req);
+    const limit = await consumeRateLimit(`verification:review:${currentUser.id}`, 20, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: `Too many requests. Retry in ${limit.retryAfterSec}s.` },
+        { status: 429 }
+      );
+    }
     const body = (await req.json()) as ReviewBody;
+    const { ip, userAgent } = getRequestMeta(req);
     if (!body.userId || !body.status) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-    }
-
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data: adminProfile, error: adminError } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", currentUser.id)
-      .single();
-
-    if (adminError || !adminProfile || adminProfile.role !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
     const { error } = await supabaseAdmin
@@ -59,9 +60,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: currentUser.id,
+      event_type: body.status === "approved" ? "verification_approved" : "verification_rejected",
+      resource_type: "verification",
+      resource_id: body.userId,
+      result: "success",
+      detail: body.reason ?? null,
+      ip,
+      user_agent: userAgent
+    });
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: 401 });
+    return NextResponse.json(
+      { error: message },
+      { status: message.includes("CSRF blocked") || message.includes("Admin") ? 403 : 401 }
+    );
   }
 }

@@ -44,7 +44,7 @@ export default function ResetPasswordPage() {
       <div className="overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="grid md:grid-cols-[38%_62%]">
           <section className="bg-gradient-to-b from-[#0E4FA8] to-[#1C82F2] p-8 text-white">
-            <p className="text-sm opacity-90">AO Match</p>
+            <p className="text-sm opacity-90">ユニブリ</p>
             <h1 className="mt-2 text-3xl font-semibold">Reset Password</h1>
             <p className="mt-5 text-sm opacity-90">メールの再設定リンクから、新しいパスワードを設定します。</p>
           </section>

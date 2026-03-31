@@ -1,14 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
+import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
+import { assertTrustedOrigin } from "../../../../lib/security/csrf";
+import { sanitizePlainText } from "../../../../lib/security/input";
+import { isAllowedAdminEmail } from "../../../../lib/auth/adminAllowlist";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function POST(req: NextRequest) {
   try {
+    assertTrustedOrigin(req);
+    const user = await requireUserFromBearerToken(req);
     const { id, full_name, role, school } = await req.json();
+    const safeName = sanitizePlainText(String(full_name ?? ""), 80);
+    const safeSchool = sanitizePlainText(String(school ?? ""), 120);
 
-    if (!id || !full_name || !role) {
+    if (!id || !safeName || !role) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
+    if (id !== user.id) {
+      return NextResponse.json({ error: "他ユーザーのプロフィールは作成できません" }, { status: 403 });
+    }
+    if (!["student", "tutor", "admin"].includes(role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+    if (role === "admin" && !isAllowedAdminEmail(user.email)) {
+      return NextResponse.json({ error: "Admin role is restricted" }, { status: 403 });
     }
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -19,9 +36,9 @@ export async function POST(req: NextRequest) {
       const result = await supabaseAdmin.from("profiles").upsert(
         {
           id,
-          full_name,
+          full_name: safeName,
           role,
-          school
+          school: safeSchool
         },
         { onConflict: "id" }
       );
@@ -45,6 +62,11 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Profile create route failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message.includes("Authorization") || message.includes("Invalid user token")
+      ? 401
+      : message.includes("CSRF blocked")
+        ? 403
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

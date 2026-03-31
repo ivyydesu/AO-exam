@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
-import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
+import { requireStrictAdminFromBearer } from "../../../../../lib/auth/requireStrictAdmin";
+import { writeSecurityAudit } from "../../../../../lib/security/audit";
+import { getRequestMeta } from "../../../../../lib/security/requestMeta";
 
 function isMissingVerificationTable(message: string) {
   const lower = message.toLowerCase();
@@ -12,18 +14,8 @@ function isMissingVerificationTable(message: string) {
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUserFromBearerToken(req);
-    const supabaseAdmin = getSupabaseAdmin();
-
-    const { data: me, error: meError } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (meError || !me || me.role !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
+    const { user, supabaseAdmin } = await requireStrictAdminFromBearer(req);
+    const { ip, userAgent } = getRequestMeta(req);
 
     const primary = await supabaseAdmin
       .from("tutor_verifications")
@@ -58,10 +50,21 @@ export async function GET(req: NextRequest) {
       return await buildResponse(fallbackData, supabaseAdmin);
     }
 
+    await writeSecurityAudit(supabaseAdmin, {
+      actor_id: user.id,
+      event_type: "verification_admin_list_viewed",
+      resource_type: "verification",
+      result: "success",
+      ip,
+      user_agent: userAgent
+    });
     return await buildResponse(primary.data ?? [], supabaseAdmin);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: 401 });
+    return NextResponse.json(
+      { error: message },
+      { status: message.includes("Admin") ? 403 : 401 }
+    );
   }
 }
 

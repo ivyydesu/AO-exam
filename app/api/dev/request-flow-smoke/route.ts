@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
 import { NextRequest } from "next/server";
+import { requireStrictAdminFromBearer } from "../../../../lib/auth/requireStrictAdmin";
 
 export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  try {
+    await requireStrictAdminFromBearer(req);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const appMode = getAppModeFromRequest(req);
   const checks: Record<string, string> = {};
 
@@ -24,7 +34,7 @@ export async function GET(req: NextRequest) {
   }
 
   checks.stripe_secret_key = process.env.STRIPE_SECRET_KEY ? "ok" : "missing";
-  checks.platform_fee_percent = process.env.PLATFORM_FEE_PERCENT ? "ok" : "missing(default=15)";
+  checks.platform_fee_percent = process.env.PLATFORM_FEE_PERCENT ? "ok" : "missing(default=30)";
   checks.app_url = process.env.NEXT_PUBLIC_APP_URL ? "ok" : "missing";
   checks.line_messaging_token = process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN ? "ok" : "missing";
 

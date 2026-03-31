@@ -49,7 +49,7 @@ export default function ProfileManagementPage() {
               <ToolRow title="スケジュール" desc="予定と対応日をカレンダーで確認します。" href="/calendar" />
               <ToolRow title="申請状況の確認" desc="依頼の承認状況や進捗を確認します。" href="/demo/request" />
             </div>
-            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
+            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 ユニブリ. All rights reserved.</p>
           </div>
         </main>
       </div>

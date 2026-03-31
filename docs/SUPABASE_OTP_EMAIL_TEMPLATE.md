@@ -8,7 +8,7 @@ Use the templates below (copy/paste).
 ## Subject
 
 ```txt
-【AO Match】ログイン認証コードのお知らせ
+【ユニブリ】ログイン認証コードのお知らせ
 ```
 
 ## HTML
@@ -18,7 +18,7 @@ Use the templates below (copy/paste).
   <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #e6ebf2;">
     <div style="background:linear-gradient(180deg,#0E4FA8 0%,#1C82F2 100%); color:#fff; padding:20px 24px;">
       <div style="font-size:14px; opacity:.9;">Welcome to</div>
-      <div style="font-size:30px; font-weight:700; margin-top:6px;">AO Match</div>
+      <div style="font-size:30px; font-weight:700; margin-top:6px;">ユニブリ</div>
       <div style="font-size:14px; margin-top:8px; opacity:.95;">ログイン認証コードをお送りします。</div>
     </div>
     <div style="padding:24px;">
@@ -42,7 +42,7 @@ Use the templates below (copy/paste).
 ## Plain Text
 
 ```txt
-AO Match ログイン認証コード: {{ .Token }}
+ユニブリ ログイン認証コード: {{ .Token }}
 コードをログイン画面に貼り付けてください。
 または次のリンクからログインできます: {{ .ConfirmationURL }}
 ```

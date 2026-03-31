@@ -87,7 +87,7 @@ function LoginPageContent() {
         normalizedRegisteredRole === "admin" && !isAllowedAdminEmail(userEmail)
           ? roleHint
           : (normalizedRegisteredRole ?? roleHint);
-      const fallbackName = (userEmail?.split("@")[0] ?? "AO Match User").slice(0, 40);
+      const fallbackName = (userEmail?.split("@")[0] ?? "ユニブリ User").slice(0, 40);
       const { error: insertError } = await supabase.from("profiles").insert({
         id: userId,
         full_name: fallbackName,
@@ -177,7 +177,7 @@ function LoginPageContent() {
             <div className="relative z-10 max-w-md">
               <div className="mb-10 flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-lg bg-white text-xl font-bold text-emerald-600">A</div>
-                <span className="text-2xl font-bold">AO Match</span>
+                <span className="text-2xl font-bold">ユニブリ</span>
               </div>
               <h1 className="text-5xl font-bold leading-tight">
                 憧れの先輩と、<br />

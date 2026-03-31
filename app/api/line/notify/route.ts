@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { sendLinePushMessage } from "../../../../lib/line";
 import { getNotificationSettingsForUser } from "../../../../lib/notificationSettings";
+import crypto from "crypto";
+import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 
 type NotifyBody = {
   targetRole: "student" | "tutor";
@@ -12,14 +14,24 @@ type NotifyBody = {
 
 export async function POST(req: NextRequest) {
   try {
-    const secret = req.headers.get("x-internal-secret");
-    if (!secret || secret !== process.env.INTERNAL_API_SECRET) {
+    const secret = req.headers.get("x-internal-secret") ?? "";
+    const expected = process.env.INTERNAL_API_SECRET ?? "";
+    if (!secret || !expected) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const secretBuf = Buffer.from(secret);
+    const expectedBuf = Buffer.from(expected);
+    if (secretBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(secretBuf, expectedBuf)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await req.json()) as NotifyBody;
     if (!body.targetUserId || !body.targetRole || !body.eventType) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
+    const limit = await consumeRateLimit(`line:notify:${body.targetUserId}`, 10, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json({ error: "Too many notifications" }, { status: 429 });
     }
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -47,9 +59,9 @@ export async function POST(req: NextRequest) {
     }
 
     const defaultMessages: Record<NotifyBody["eventType"], string> = {
-      new_request: "新しい依頼が届きました。AO Matchを確認してください。",
+      new_request: "新しい依頼が届きました。ユニブリを確認してください。",
       request_approved: "依頼が承認されました。次のステップを確認してください。",
-      custom: "AO Matchからのお知らせです。"
+      custom: "ユニブリからのお知らせです。"
     };
 
     const text = body.message || defaultMessages[body.eventType];

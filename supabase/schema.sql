@@ -113,6 +113,31 @@ create table if not exists messages (
   created_at timestamptz default now()
 );
 
+alter table messages
+add column if not exists message_kind text not null default 'chat'
+  check (message_kind in ('chat', 'file', 'prepay', 'system'));
+
+alter table messages
+add column if not exists expires_at timestamptz;
+
+alter table messages
+add column if not exists deleted_at timestamptz;
+
+alter table messages
+add column if not exists deleted_by uuid references profiles(id) on delete set null;
+
+create index if not exists idx_messages_request_created on messages(request_id, created_at);
+create index if not exists idx_messages_expires_at on messages(expires_at);
+
+create table if not exists chat_groups (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid not null unique references requests(id) on delete cascade,
+  student_id uuid not null references profiles(id) on delete cascade,
+  tutor_id uuid not null references profiles(id) on delete cascade,
+  group_type text not null default 'paid' check (group_type in ('paid')),
+  created_at timestamptz default now()
+);
+
 -- Reviews
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
@@ -226,6 +251,7 @@ alter table request_details enable row level security;
 alter table call_sessions enable row level security;
 alter table call_participants enable row level security;
 alter table call_events enable row level security;
+alter table chat_groups enable row level security;
 alter table reports enable row level security;
 alter table line_link_states enable row level security;
 alter table tutor_verifications enable row level security;
@@ -300,11 +326,56 @@ create policy "requests_update" on requests
   for update using (auth.uid() = requester_id or auth.uid() = tutor_id);
 
 -- Messages policies
+drop policy if exists "messages_select" on messages;
+drop policy if exists "messages_insert" on messages;
+drop policy if exists "messages_update_own_or_admin" on messages;
 create policy "messages_select" on messages
-  for select using (auth.uid() is not null);
+  for select using (
+    exists (
+      select 1 from requests r
+      where r.id = request_id
+        and (
+          r.requester_id = auth.uid()
+          or r.tutor_id = auth.uid()
+          or exists (
+            select 1 from profiles p
+            where p.id = auth.uid() and p.role = 'admin'
+          )
+        )
+    )
+  );
 
 create policy "messages_insert" on messages
   for insert with check (auth.uid() = sender_id);
+
+create policy "messages_update_own_or_admin" on messages
+  for update using (
+    sender_id = auth.uid()
+    or exists (
+      select 1 from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
+
+drop policy if exists "chat_groups_select_participants" on chat_groups;
+drop policy if exists "chat_groups_insert_system" on chat_groups;
+create policy "chat_groups_select_participants" on chat_groups
+  for select using (
+    student_id = auth.uid()
+    or tutor_id = auth.uid()
+    or exists (
+      select 1 from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
+
+create policy "chat_groups_insert_system" on chat_groups
+  for insert with check (
+    exists (
+      select 1 from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
 
 -- Reviews policies
 create policy "reviews_select" on reviews
@@ -529,3 +600,45 @@ insert into demo_tutor_categories (tutor_id, category_id) values
   ('tutor-2','c3'),
   ('tutor-3','c4')
 on conflict do nothing;
+
+-- =========================================================
+-- Platform settings (admin only)
+-- =========================================================
+create table if not exists public.platform_settings (
+  key text primary key,
+  value text,
+  updated_at timestamptz default now()
+);
+
+alter table public.platform_settings enable row level security;
+
+drop policy if exists "platform_settings_admin_select" on public.platform_settings;
+create policy "platform_settings_admin_select" on public.platform_settings
+for select using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+drop policy if exists "platform_settings_admin_insert" on public.platform_settings;
+create policy "platform_settings_admin_insert" on public.platform_settings
+for insert with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+drop policy if exists "platform_settings_admin_update" on public.platform_settings;
+create policy "platform_settings_admin_update" on public.platform_settings
+for update using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+insert into public.platform_settings (key, value)
+values ('platform_fee_percent', '30')
+on conflict (key) do nothing;

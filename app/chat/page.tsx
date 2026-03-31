@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "../../lib/supabase/client";
+import { isSafeHttpUrl } from "../../lib/security/input";
 
 type ChatRequest = {
   id: string;
@@ -11,6 +12,7 @@ type ChatRequest = {
   status: string;
   requester_id: string;
   tutor_id: string | null;
+  stripe_payment_intent_id?: string | null;
   created_at: string;
 };
 
@@ -19,6 +21,9 @@ type Message = {
   request_id: string;
   sender_id: string;
   content: string;
+  message_kind?: "chat" | "file" | "prepay" | "system";
+  expires_at?: string | null;
+  deleted_at?: string | null;
   created_at: string;
 };
 
@@ -66,6 +71,7 @@ function formatDate(value: string) {
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
+    appointment_pending: "アポ調整中",
     draft: "依頼作成",
     pending: "依頼確認中",
     accepted: "支払い待ち",
@@ -93,7 +99,13 @@ function parseMessage(raw: Message): ParsedMessage {
       text?: string;
       file?: { name?: string; mimeType?: string; size?: number; url?: string; path?: string };
     };
-    if (parsed.kind === "file" && parsed.file?.name && parsed.file?.mimeType && parsed.file?.url) {
+    if (
+      parsed.kind === "file" &&
+      parsed.file?.name &&
+      parsed.file?.mimeType &&
+      parsed.file?.url &&
+      isSafeHttpUrl(parsed.file.url)
+    ) {
       return {
         ...raw,
         kind: "file",
@@ -118,6 +130,46 @@ function parseMessage(raw: Message): ParsedMessage {
   };
 }
 
+function isActiveMessage(raw: Message) {
+  if (raw.deleted_at) return false;
+  return true;
+}
+
+function isPaidRequest(request: ChatRequest) {
+  if (request.stripe_payment_intent_id) return true;
+  return ["escrowed", "in_progress", "review_pending", "completed"].includes(request.status);
+}
+
+function canDeleteMessage(message: ParsedMessage, userId: string | null) {
+  if (!userId) return false;
+  if (message.sender_id !== userId) return false;
+  return true;
+}
+
+function messageExampleForRequest(title: string, method: string | null | undefined) {
+  if (title.includes("志望理由書")) {
+    return "例: 志望理由書の1段落目を書いたので、伝わりにくい部分を見てほしいです。";
+  }
+  if (title.includes("探究")) {
+    return "例: 探究テーマを教育行政にしようと思っています。論点が広すぎないか相談したいです。";
+  }
+  if (method?.includes("オンライン")) {
+    return "例: 明日の面談前に、話したい内容を3点共有します。";
+  }
+  return "例: 大学生活の雰囲気や、受験期に意識したことを教えてください。";
+}
+
+function requestNeedsAction(request: ChatRequest, currentUserId: string | null) {
+  if (!currentUserId) return false;
+  const isRequester = request.requester_id === currentUserId;
+  const isTutor = request.tutor_id === currentUserId;
+  if (request.status === "pending" && isTutor) return true;
+  if ((request.status === "accepted" || request.status === "payment_pending") && isRequester) return true;
+  if (request.status === "review_pending" && isRequester) return true;
+  if (request.status === "appointment_pending") return true;
+  return false;
+}
+
 export default function ChatHomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
@@ -131,6 +183,7 @@ export default function ChatHomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [readByRequest, setReadByRequest] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -160,7 +213,7 @@ export default function ChatHomePage() {
 
         const { data: reqs, error: reqError } = await supabase
           .from("requests")
-          .select("id, title, status, requester_id, tutor_id, created_at")
+          .select("id, title, status, requester_id, tutor_id, stripe_payment_intent_id, created_at")
           .or(`requester_id.eq.${uid},tutor_id.eq.${uid}`)
           .order("created_at", { ascending: false });
         if (reqError) throw new Error(reqError.message);
@@ -183,16 +236,34 @@ export default function ChatHomePage() {
           )
         );
 
-        const [messageRes, profileRes, tutorProfileRes, detailRes] = await Promise.all([
-          supabase
-            .from("messages")
-            .select("id, request_id, sender_id, content, created_at")
-            .in("request_id", requestIds)
-            .order("created_at", { ascending: true }),
+        await fetch("/api/messages/cleanup", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${sessionData.session?.access_token}` }
+        }).catch(() => undefined);
+
+        const queryWithMeta = supabase
+          .from("messages")
+          .select("id, request_id, sender_id, content, message_kind, expires_at, deleted_at, created_at")
+          .in("request_id", requestIds)
+          .order("created_at", { ascending: true });
+        const queryLegacy = supabase
+          .from("messages")
+          .select("id, request_id, sender_id, content, created_at")
+          .in("request_id", requestIds)
+          .order("created_at", { ascending: true });
+
+        const [messageMetaRes, messageLegacyRes, profileRes, tutorProfileRes, detailRes] = await Promise.all([
+          queryWithMeta,
+          queryLegacy,
           supabase.from("profiles").select("id, full_name, school").in("id", participantIds),
           supabase.from("tutor_profiles").select("user_id, avatar_url").in("user_id", participantIds),
           supabase.from("request_details").select("request_id, support_method, requested_deadline").in("request_id", requestIds)
         ]);
+
+        const messageRes =
+          messageMetaRes.error && messageMetaRes.error.message.includes("column")
+            ? messageLegacyRes
+            : messageMetaRes;
 
         if (messageRes.error) throw new Error(messageRes.error.message);
         if (profileRes.error) throw new Error(profileRes.error.message);
@@ -203,11 +274,13 @@ export default function ChatHomePage() {
           throw new Error(detailRes.error.message);
         }
 
-        const groupedMessages = ((messageRes.data as Message[] | null) ?? []).reduce<Record<string, ParsedMessage[]>>((acc, item) => {
-          if (!acc[item.request_id]) acc[item.request_id] = [];
-          acc[item.request_id].push(parseMessage(item));
-          return acc;
-        }, {});
+        const groupedMessages = ((messageRes.data as Message[] | null) ?? [])
+          .filter((item) => isActiveMessage(item))
+          .reduce<Record<string, ParsedMessage[]>>((acc, item) => {
+            if (!acc[item.request_id]) acc[item.request_id] = [];
+            acc[item.request_id].push(parseMessage(item));
+            return acc;
+          }, {});
         setMessagesByRequest(groupedMessages);
 
         const avatarMap = Object.fromEntries(((tutorProfileRes.data as Array<{ user_id: string; avatar_url: string | null }> | null) ?? []).map((item) => [item.user_id, item.avatar_url ?? ""]));
@@ -237,11 +310,24 @@ export default function ChatHomePage() {
     const channel = supabase
       .channel(`messages-all-${userId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
-        const item = parseMessage(payload.new as Message);
+        const row = payload.new as Message;
+        if (!isActiveMessage(row)) return;
+        const item = parseMessage(row);
         setMessagesByRequest((prev) => ({
           ...prev,
           [item.request_id]: [...(prev[item.request_id] ?? []), item]
         }));
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
+        const row = payload.new as Message;
+        setMessagesByRequest((prev) => {
+          const list = prev[row.request_id] ?? [];
+          if (list.length === 0) return prev;
+          return {
+            ...prev,
+            [row.request_id]: list.filter((item) => item.id !== row.id)
+          };
+        });
       })
       .subscribe();
 
@@ -268,11 +354,17 @@ export default function ChatHomePage() {
       : requests;
 
     return [...base].sort((a, b) => {
+      const aLatestMessage = (messagesByRequest[a.id] ?? []).at(-1);
+      const bLatestMessage = (messagesByRequest[b.id] ?? []).at(-1);
+      const aUnread = Boolean(aLatestMessage && aLatestMessage.sender_id !== userId && (readByRequest[a.id] ?? "") < aLatestMessage.created_at);
+      const bUnread = Boolean(bLatestMessage && bLatestMessage.sender_id !== userId && (readByRequest[b.id] ?? "") < bLatestMessage.created_at);
+      if (aUnread !== bUnread) return aUnread ? -1 : 1;
+
       const aLatest = (messagesByRequest[a.id] ?? []).at(-1)?.created_at ?? a.created_at;
       const bLatest = (messagesByRequest[b.id] ?? []).at(-1)?.created_at ?? b.created_at;
       return new Date(bLatest).getTime() - new Date(aLatest).getTime();
     });
-  }, [requests, profiles, search, userId, messagesByRequest]);
+  }, [requests, profiles, search, userId, messagesByRequest, readByRequest]);
 
   const selectedRequest = requests.find((item) => item.id === selectedRequestId) ?? null;
   const selectedMessages = selectedRequest ? messagesByRequest[selectedRequest.id] ?? [] : [];
@@ -284,8 +376,27 @@ export default function ChatHomePage() {
   const selectedOther = selectedOtherId ? profiles[selectedOtherId] : null;
   const selectedDetail = selectedRequest ? detailsByRequest[selectedRequest.id] : undefined;
   const canChat = selectedRequest ? !["rejected", "canceled", "cancelled"].includes(selectedRequest.status) : false;
+  const prepayMode = selectedRequest ? !isPaidRequest(selectedRequest) : false;
   const isOnlineMethod = Boolean(selectedDetail?.support_method?.includes("オンライン"));
   const videoCallsEnabled = process.env.NEXT_PUBLIC_VIDEO_CALLS_ENABLED !== "false";
+  const messagePlaceholder = selectedRequest
+    ? messageExampleForRequest(selectedRequest.title, selectedDetail?.support_method)
+    : "メッセージを入力";
+  const quickTemplates = useMemo(() => {
+    if (!selectedRequest) return [];
+    if (prepayMode) {
+      return [
+        "はじめまして。今回相談したい内容を3点に整理しました。",
+        "対応可能な日時を2〜3候補いただけますか？",
+        "事前に読んでほしい資料をこのあと送ります。"
+      ];
+    }
+    return [
+      "本日の相談ありがとうございます。次回までの宿題を確認したいです。",
+      "共有いただいた資料について、ここをもう少し詳しく教えてください。",
+      "次回面談の日程候補を3つ送ります。"
+    ];
+  }, [selectedRequest, prepayMode]);
 
   useEffect(() => {
     if (!selectedRequest) return;
@@ -300,13 +411,29 @@ export default function ChatHomePage() {
     if (!supabase) return;
     const message = content.trim();
     setContent("");
-    const { error: insertError } = await supabase.from("messages").insert({
-      request_id: selectedRequest.id,
-      sender_id: userId,
-      content: message
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setError("セッションが切れています。再ログインしてください。");
+      setContent(message);
+      return;
+    }
+
+    const res = await fetch("/api/messages/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        requestId: selectedRequest.id,
+        type: "text",
+        content: message
+      })
     });
-    if (insertError) {
-      setError(insertError.message);
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(payload?.error ?? "メッセージ送信に失敗しました");
       setContent(message);
     }
   };
@@ -335,28 +462,57 @@ export default function ChatHomePage() {
         throw new Error(uploadData?.error ?? "ファイルアップロードに失敗しました");
       }
 
-      const payload = {
-        kind: "file",
-        text: "",
-        file: {
-          name: uploadData.file.name,
-          mimeType: uploadData.file.mimeType,
-          size: uploadData.file.size,
-          path: uploadData.file.path,
-          url: uploadData.file.url
-        }
-      };
-      const { error: insertError } = await supabase.from("messages").insert({
-        request_id: selectedRequest.id,
-        sender_id: userId,
-        content: JSON.stringify(payload)
+      const sendRes = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          requestId: selectedRequest.id,
+          type: "file",
+          file: uploadData.file
+        })
       });
-      if (insertError) throw new Error(insertError.message);
+      const sendPayload = await sendRes.json().catch(() => ({}));
+      if (!sendRes.ok) throw new Error(sendPayload?.error ?? "ファイルメッセージ送信に失敗しました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "ファイル送信に失敗しました");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const deleteMessage = async (messageId: string) => {
+    if (!messageId) return;
+    const ok = window.confirm("このメッセージを削除します。よろしいですか？");
+    if (!ok) return;
+    try {
+      setDeletingMessageId(messageId);
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabaseが初期化されていません");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("セッションが切れています。再ログインしてください。");
+
+      const res = await fetch(`/api/messages/${messageId}/delete`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? "削除に失敗しました");
+
+      if (selectedRequest) {
+        setMessagesByRequest((prev) => ({
+          ...prev,
+          [selectedRequest.id]: (prev[selectedRequest.id] ?? []).filter((item) => item.id !== messageId)
+        }));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "削除に失敗しました");
+    } finally {
+      setDeletingMessageId(null);
     }
   };
 
@@ -404,10 +560,13 @@ export default function ChatHomePage() {
               const other = otherId ? profiles[otherId] : null;
               const latest = (messagesByRequest[item.id] ?? []).at(-1);
               const unread = Boolean(latest && latest.sender_id !== userId && (readByRequest[item.id] ?? "") < latest.created_at);
+              const canReplyHere = !["rejected", "canceled", "cancelled"].includes(item.status);
+              const waitingReply = Boolean(latest && latest.sender_id !== userId && canReplyHere);
+              const needsAction = requestNeedsAction(item, userId);
               const latestPreview = latest
                 ? latest.kind === "file" && latest.file
                   ? `📎 ${latest.file.name}`
-                  : latest.text
+                  : latest.text || "メッセージ"
                 : item.title || statusLabel(item.status);
               const active = item.id === selectedRequestId;
               return (
@@ -434,9 +593,14 @@ export default function ChatHomePage() {
                       <span className="truncate text-sm font-semibold">{other?.full_name || "相手未設定"}</span>
                       <span className={`text-xs ${active ? "font-medium text-[#00b884]" : "text-gray-400"}`}>{latest ? formatDate(latest.created_at) : formatDate(item.created_at)}</span>
                     </div>
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      {unread ? <span className="rounded-full bg-[#DCFCE7] px-2 py-0.5 text-[10px] font-semibold text-[#166534]">未読</span> : null}
+                      {waitingReply ? <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-semibold text-[#92400E]">未返信</span> : null}
+                      {needsAction ? <span className="rounded-full bg-[#FEE2E2] px-2 py-0.5 text-[10px] font-semibold text-[#B91C1C]">要対応</span> : null}
+                    </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-xs text-[#5e8d7f]">{latestPreview}</span>
-                      {unread ? <span className="size-5 rounded-full bg-[#00b884] text-center text-[10px] font-bold leading-5 text-white">N</span> : null}
+                      {unread ? <span className="min-w-5 rounded-full bg-[#00b884] px-1.5 text-center text-[10px] font-bold leading-5 text-white">NEW</span> : null}
                     </div>
                     <div className="mt-1 text-[11px] text-gray-400">{statusLabel(item.status)}</div>
                   </div>
@@ -491,14 +655,57 @@ export default function ChatHomePage() {
               </header>
 
               <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 pb-4 pt-20">
+                <section className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-4 shadow-sm">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-[#111827]">使い方</div>
+                      <p className="mt-1 text-sm text-[#6B7280]">
+                        {prepayMode
+                          ? "まずは相談内容をすり合わせる段階です。方向性が合えば、そのまま依頼へ進めます。"
+                          : "ここは支払い完了後の専用チャットです。資料共有・日程調整・ビデオ通話導線をまとめています。"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full bg-white px-3 py-1 font-medium text-[#5e8d7f] shadow-sm">
+                        状態: {statusLabel(selectedRequest.status)}
+                      </span>
+                      {selectedDetail?.support_method ? (
+                        <span className="rounded-full bg-white px-3 py-1 font-medium text-[#5e8d7f] shadow-sm">
+                          方法: {selectedDetail.support_method}
+                        </span>
+                      ) : null}
+                      {selectedDetail?.requested_deadline ? (
+                        <span className="rounded-full bg-white px-3 py-1 font-medium text-[#5e8d7f] shadow-sm">
+                          期限: {formatDate(selectedDetail.requested_deadline)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
                 <div className="my-4 flex justify-center">
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-500">Today</span>
                 </div>
                 {selectedMessages.length === 0 ? (
-                  <div className="text-sm text-[#5e8d7f]">まだメッセージがありません。</div>
+                  <div className="rounded-2xl border border-dashed border-[#D1D5DB] bg-[#FCFEFD] px-6 py-8 text-sm text-[#5e8d7f]">
+                    <p className="font-semibold text-[#111827]">まだメッセージがありません</p>
+                    <p className="mt-1">下の入力欄から送信すると、この画面に会話が表示されます。</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {quickTemplates.map((template) => (
+                        <button
+                          key={template}
+                          type="button"
+                          onClick={() => setContent(template)}
+                          className="rounded-full border border-[#D1D5DB] bg-white px-3 py-1 text-xs text-[#4B5563] transition hover:border-[#10B981] hover:text-[#10B981]"
+                        >
+                          例文を使う
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
                   selectedMessages.map((message) => {
                     const mine = message.sender_id === userId;
+                          const canDelete = canDeleteMessage(message, userId);
                     return (
                       <div key={message.id} className={`flex max-w-[80%] gap-3 ${mine ? "ml-auto flex-row-reverse" : ""}`}>
                         {!mine ? (
@@ -514,6 +721,16 @@ export default function ChatHomePage() {
                           <div className={`flex items-baseline gap-2 ${mine ? "flex-row-reverse" : ""}`}>
                             {!mine ? <span className="text-xs font-bold">{selectedOther?.full_name || "相手"}</span> : null}
                             <span className="text-[10px] text-gray-400">{formatTime(message.created_at)}</span>
+                            {mine && canDelete ? (
+                              <button
+                                type="button"
+                                onClick={() => void deleteMessage(message.id)}
+                                disabled={deletingMessageId === message.id}
+                                className="rounded-full border border-[#FECACA] px-2 py-0.5 text-[10px] font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-60"
+                              >
+                                {deletingMessageId === message.id ? "削除中..." : "削除"}
+                              </button>
+                            ) : null}
                           </div>
                           {message.kind === "file" && message.file ? (
                             <div className={`w-[340px] max-w-full rounded-2xl border p-3 shadow-sm ${mine ? "border-[#0ea371] bg-[#00b884]/10" : "border-[#E5E7EB] bg-white"}`}>
@@ -523,12 +740,7 @@ export default function ChatHomePage() {
                                   <p className="text-xs text-gray-500">{formatSize(message.file.size)} ・ {message.file.mimeType}</p>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
-                                  <a
-                                    href={message.file.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-lg border border-[#E5E7EB] px-2.5 py-1.5 text-xs font-semibold text-[#374151] hover:bg-gray-50"
-                                  >
+                                  <a href={message.file.url} target="_blank" rel="noreferrer" className="rounded-lg border border-[#E5E7EB] px-2.5 py-1.5 text-xs font-semibold text-[#374151] hover:bg-gray-50">
                                     開く
                                   </a>
                                 </div>
@@ -554,46 +766,64 @@ export default function ChatHomePage() {
 
               <div className="border-t border-[#e2e8e6] bg-white px-6 py-4">
                 {canChat ? (
-                  <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e6] bg-[#fbfdfd] px-4 py-3 shadow-sm">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void sendFile(file);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      className="grid size-10 shrink-0 place-items-center rounded-full border border-[#d1d5db] text-[#5e8d7f] transition hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
-                      title="ファイル送信"
-                    >
-                      +
-                    </button>
-                    <textarea
-                      className="max-h-28 min-h-[44px] flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400"
-                      placeholder="メッセージを入力"
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          void sendMessage();
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={sendMessage}
-                      disabled={uploading || !content.trim()}
-                      className="grid size-11 place-items-center rounded-full bg-[#00b884] text-white shadow-[0_0_15px_rgba(0,184,132,0.15)] transition hover:bg-[#00a374] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      ➤
-                    </button>
-                  </div>
+                  <>
+                    <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e6] bg-[#fbfdfd] px-4 py-3 shadow-sm">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void sendFile(file);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="grid size-10 shrink-0 place-items-center rounded-full border border-[#d1d5db] text-[#5e8d7f] transition hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
+                        title="ファイル送信"
+                      >
+                        +
+                      </button>
+                      <textarea
+                        className="max-h-28 min-h-[44px] flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400"
+                        placeholder={messagePlaceholder}
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            void sendMessage();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={sendMessage}
+                        disabled={uploading || !content.trim()}
+                        className="grid size-11 place-items-center rounded-full bg-[#00b884] text-white shadow-[0_0_15px_rgba(0,184,132,0.15)] transition hover:bg-[#00a374] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        ➤
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 px-2 text-xs text-[#94A3B8]">
+                      入力例: {messagePlaceholder}
+                      <span className="rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[11px] text-[#6B7280]">送信後も自分のメッセージは削除できます</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 px-1">
+                      {quickTemplates.map((template) => (
+                        <button
+                          key={template}
+                          type="button"
+                          onClick={() => setContent(template)}
+                          className="rounded-full border border-[#D1D5DB] bg-white px-3 py-1 text-xs text-[#4B5563] transition hover:border-[#10B981] hover:text-[#10B981]"
+                        >
+                          クイック入力
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <div className="rounded-2xl border border-[#e2e8e6] bg-[#fbfdfd] px-4 py-3 text-sm text-[#5e8d7f]">
                     この依頼は現在チャットできません。状態: {statusLabel(selectedRequest.status)}

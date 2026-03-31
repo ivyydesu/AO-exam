@@ -44,7 +44,7 @@ export async function getCallAccessContext(
     throw new Error("この通話ルームに入室する権限がありません");
   }
 
-  const testMode = Boolean(options?.testMode);
+  const testMode = Boolean(options?.testMode) || process.env.VIDEO_CALL_TEST_BYPASS === "true";
 
   if (!testMode && !["escrowed", "in_progress", "review_pending", "completed"].includes(requestRow.status)) {
     const hasPaymentProof = Boolean(requestRow.stripe_payment_intent_id);

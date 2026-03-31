@@ -50,7 +50,7 @@ export default function CameraTestPage() {
       <div className="mx-auto max-w-[1100px] px-6 py-10">
         <div className="rounded-3xl border border-[#E5E7EB] bg-white p-8 shadow-[0_12px_40px_rgba(0,0,0,0.06)]">
           <h1 className="text-3xl font-bold text-[#111827]">カメラ・マイク最小テスト</h1>
-          <p className="mt-2 text-sm text-[#6B7280]">このページは AO Match ドメイン上でブラウザの権限ダイアログが出るかを確認する専用ページです。</p>
+          <p className="mt-2 text-sm text-[#6B7280]">このページは ユニブリ ドメイン上でブラウザの権限ダイアログが出るかを確認する専用ページです。</p>
 
           {error ? <p className="mt-6 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C]">{error}</p> : null}
           {message ? <p className="mt-6 rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-3 text-sm text-[#047857]">{message}</p> : null}

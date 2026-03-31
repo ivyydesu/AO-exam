@@ -164,7 +164,7 @@ export default function CalendarPage() {
                 })}
               </div>
             </div>
-            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 AO Match. All rights reserved.</p>
+            <p className="mt-8 text-center text-xs text-[#6B7280]/70">© 2024 ユニブリ. All rights reserved.</p>
           </div>
         </main>
       </div>

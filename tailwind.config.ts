@@ -5,8 +5,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ["var(--font-display)", "ui-sans-serif", "system-ui"],
-        body: ["var(--font-body)", "ui-sans-serif", "system-ui"]
+        display: ["Inter", "\"Noto Sans JP\"", "ui-sans-serif", "system-ui"],
+        body: ["\"Noto Sans JP\"", "Inter", "ui-sans-serif", "system-ui"]
       },
       colors: {
         ink: "#0B0B0F",

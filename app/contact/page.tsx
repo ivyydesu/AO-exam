@@ -32,7 +32,7 @@ export default function ContactPage() {
             <p className="text-lg leading-relaxed text-[#6b7280]">
               ご質問・ご相談は下記フォームからお問い合わせください。
               <br />
-              AO Matchチームが24時間以内に返信いたします。
+              ユニブリチームが24時間以内に返信いたします。
             </p>
           </div>
 
@@ -70,7 +70,7 @@ export default function ContactPage() {
                 <label className="mb-2 block text-sm font-medium text-[#6b7280]" htmlFor="name">
                   お名前 <span className="text-red-500">*</span>
                 </label>
-                <input id="name" className="w-full rounded-xl border-[#e5e7eb] bg-[#f9fafb] px-4 py-3" placeholder="AO Match 太郎" />
+                <input id="name" className="w-full rounded-xl border-[#e5e7eb] bg-[#f9fafb] px-4 py-3" placeholder="ユニブリ 太郎" />
               </div>
 
               <div>
@@ -145,7 +145,7 @@ export default function ContactPage() {
       </main>
 
       <footer className="mt-12 border-t border-[#e5e7eb] bg-white py-8">
-        <div className="mx-auto w-full max-w-7xl px-6 text-center text-sm text-[#6b7280]">© 2024 AO Match. All rights reserved.</div>
+        <div className="mx-auto w-full max-w-7xl px-6 text-center text-sm text-[#6b7280]">© 2024 ユニブリ. All rights reserved.</div>
       </footer>
     </div>
   );

@@ -1,4 +1,4 @@
-# AO Match リリース前チェックリスト（Security / RLS / 監査ログ）
+# ユニブリ リリース前チェックリスト（Security / RLS / 監査ログ）
 
 ## 1. 環境変数
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` が Production 用
