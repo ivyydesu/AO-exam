@@ -441,7 +441,6 @@ export default function HomePage() {
                 <ul className="space-y-2 text-sm text-gray-600">
                   <li><a className="hover:text-[#10b981]" href="/search">先輩を探す</a></li>
                   <li><a className="hover:text-[#10b981]" href="/guide">ご利用ガイド</a></li>
-                  <li><a className="hover:text-[#10b981]" href="/pricing">料金プラン</a></li>
                 </ul>
               </div>
               <div>

@@ -52,6 +52,7 @@ add column if not exists graduation_year integer;
 -- Public tutor profile for search and listing
 create table if not exists tutor_profiles (
   user_id uuid primary key references profiles(id) on delete cascade,
+  nickname text not null default '',
   avatar_url text,
   cover_url text,
   university text not null default '',
@@ -69,6 +70,8 @@ alter table tutor_profiles
 add column if not exists is_published boolean not null default false;
 alter table tutor_profiles
 add column if not exists cover_url text;
+alter table tutor_profiles
+add column if not exists nickname text not null default '';
 
 -- Per-user notification preferences
 create table if not exists notification_settings (

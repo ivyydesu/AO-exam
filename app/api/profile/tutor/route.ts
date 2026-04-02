@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     }
 
     let tutor: {
+      nickname?: string;
       avatar_url?: string | null;
       cover_url?: string | null;
       university?: string;
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
 
     const withPublish = await supabaseAdmin
       .from("tutor_profiles")
-      .select("avatar_url, cover_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
+      .select("nickname, avatar_url, cover_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
       .eq("user_id", user.id)
       .maybeSingle();
     if (!withPublish.error) {
@@ -59,12 +60,13 @@ export async function GET(req: NextRequest) {
       if (fallback.error) {
         return NextResponse.json({ error: fallback.error.message }, { status: 400 });
       }
-      tutor = fallback.data;
+      tutor = fallback.data ? { ...fallback.data, nickname: "" } : null;
     }
 
     return NextResponse.json({
       profile: {
         full_name: profile.full_name ?? "",
+        nickname: tutor?.nickname ?? "",
         role: profile.role,
         school: profile.school ?? "",
         avatar_url: tutor?.avatar_url ?? "",
@@ -103,6 +105,7 @@ export async function POST(req: NextRequest) {
 
     const form = await req.formData();
     const fullName = sanitizePlainText(String(form.get("full_name") ?? ""), 80);
+    const nickname = sanitizePlainText(String(form.get("nickname") ?? ""), 40);
     const school = sanitizePlainText(String(form.get("school") ?? ""), 120);
     const university = sanitizePlainText(String(form.get("university") ?? ""), 120);
     const department = sanitizePlainText(String(form.get("department") ?? ""), 120);
@@ -168,6 +171,7 @@ export async function POST(req: NextRequest) {
 
     const payload: Record<string, unknown> = {
       user_id: user.id,
+      nickname,
       university,
       department,
       seminar,
@@ -189,6 +193,7 @@ export async function POST(req: NextRequest) {
       const fallbackPayload = { ...payload };
       delete fallbackPayload.is_published;
       delete fallbackPayload.cover_url;
+      delete fallbackPayload.nickname;
       const fallback = await supabaseAdmin
         .from("tutor_profiles")
         .upsert(fallbackPayload, { onConflict: "user_id" });
@@ -203,6 +208,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       profile: {
         full_name: fullName,
+        nickname,
         school,
         university,
         department,
