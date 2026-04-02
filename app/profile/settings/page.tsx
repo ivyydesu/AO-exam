@@ -553,7 +553,7 @@ export default function ProfileSettingsPage() {
                 </label>
               </div>
 
-              <form className="px-8 pb-8" onSubmit={onSaveProfile}>
+              <form id="profile-form-container" className="px-8 pb-8" onSubmit={onSaveProfile}>
                 <div className="relative -mt-12 mb-6 flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
                   <div className="flex flex-1 flex-col gap-6 md:flex-row md:items-center">
                   <div className="group relative">

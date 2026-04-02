@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUserFromBearerToken } from "../../../lib/auth/requireUser";
 import { getSupabaseAdmin } from "../../../lib/supabase/server";
 
+function isMissingReportsDetailsColumn(message: string) {
+  const m = message.toLowerCase();
+  return (
+    m.includes("column reports.details does not exist") ||
+    m.includes("could not find the 'details' column")
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUserFromBearerToken(req);
@@ -22,19 +30,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "reportType が不正です" }, { status: 400 });
     }
 
-    const { data, error } = await supabaseAdmin
+    const insertPayload = {
+      reporter_id: user.id,
+      target_user_id: targetUserId,
+      request_id: requestId,
+      report_type: reportType,
+      category,
+      details,
+      status: "open"
+    };
+
+    let { data, error } = await supabaseAdmin
       .from("reports")
-      .insert({
+      .insert(insertPayload)
+      .select("id, status, created_at")
+      .single();
+
+    if (error && isMissingReportsDetailsColumn(error.message)) {
+      const fallbackPayload = {
         reporter_id: user.id,
         target_user_id: targetUserId,
         request_id: requestId,
         report_type: reportType,
         category,
-        details,
+        detail: details,
         status: "open"
-      })
-      .select("id, status, created_at")
-      .single();
+      };
+      const fallbackResult = await supabaseAdmin
+        .from("reports")
+        .insert(fallbackPayload)
+        .select("id, status, created_at")
+        .single();
+      data = fallbackResult.data;
+      error = fallbackResult.error;
+    }
 
     if (error) {
       const missingReportsTable =

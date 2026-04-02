@@ -3,121 +3,252 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
-import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { getSupabaseClient } from "../lib/supabase/client";
 
+type TourStepDef = {
+  id: string;
+  path: "/home" | "/profile/settings";
+  selector?: string;
+  title: string;
+  description: string;
+  side?: "top" | "right" | "bottom" | "left" | "over";
+  align?: "start" | "center" | "end";
+};
+
 const TOUR_DONE_KEY_PREFIX = "unibridgeTourDone:";
-const TOUR_SKIP_KEY_PREFIX = "unibridgeTourSkipped:";
+const TOUR_PROGRESS_KEY_PREFIX = "uniBridgeTourProgress:";
+
+const TOUR_STEPS: TourStepDef[] = [
+  {
+    id: "signup-button",
+    path: "/home",
+    selector: "#signup-button",
+    title: "ステップ1：アカウント登録（まずはここから！）",
+    description: "UniBridgeのトップページです。まずは『新規登録』ボタンを押して始めましょう。",
+    side: "bottom",
+    align: "start"
+  },
+  {
+    id: "home-to-profile",
+    path: "/home",
+    selector: "#signup-button",
+    title: "次のステップへ",
+    description: "『次へ』を押すとプロフィール設定画面に移動し、チュートリアルが自動で続きます。",
+    side: "bottom",
+    align: "start"
+  },
+  {
+    id: "profile-form",
+    path: "/profile/settings",
+    selector: "#profile-form-container",
+    title: "ステップ2：プロフィール登録（あなたの魅力を伝えよう！）",
+    description: "大学名、学部、自己紹介を入力しましょう。情報が具体的なほど高校生に信頼されます。",
+    side: "top",
+    align: "start"
+  },
+  {
+    id: "save-profile",
+    path: "/profile/settings",
+    selector: "#save-profile-button",
+    title: "保存して完了！",
+    description: "入力が終わったら『保存する』を押して準備完了です。",
+    side: "top",
+    align: "center"
+  }
+];
+
+function normalizePath(pathname: string) {
+  if (!pathname || pathname === "/") return "/home";
+  return pathname;
+}
 
 function injectTourStyles() {
-  if (document.getElementById("unibridge-tour-style")) return;
+  if (typeof document === "undefined") return;
+  if (document.getElementById("unibridge-driver-styles")) return;
+
   const style = document.createElement("style");
-  style.id = "unibridge-tour-style";
-  style.innerHTML = `
+  style.id = "unibridge-driver-styles";
+  style.textContent = `
     .driver-overlay { background: rgba(2, 6, 23, 0.72) !important; }
     .driver-stage {
-      border-radius: 12px !important;
+      border-radius: 14px !important;
       box-shadow: 0 0 0 3px rgba(73, 181, 104, 0.38) !important;
     }
-    .driver-popover.unibridge-tour {
-      max-width: min(92vw, 380px) !important;
+    .driver-popover.unibridge-driver-popover {
+      border-radius: 16px !important;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04) !important;
+      padding: 20px !important;
       border: 1px solid #d1fae5 !important;
-      border-radius: 14px !important;
-      box-shadow: 0 14px 34px rgba(2, 6, 23, 0.24) !important;
-      color: #1f2937 !important;
+      font-family: inherit !important;
     }
-    .driver-popover.unibridge-tour .driver-popover-title {
-      color: #111827 !important;
-      font-weight: 800 !important;
-      font-size: 16px !important;
-    }
-    .driver-popover.unibridge-tour .driver-popover-description {
-      color: #374151 !important;
-      line-height: 1.65 !important;
-      font-size: 14px !important;
-    }
-    .driver-popover.unibridge-tour .driver-popover-footer button {
-      border-radius: 10px !important;
+    .driver-popover.unibridge-driver-popover .driver-popover-title {
+      font-size: 18px !important;
       font-weight: 700 !important;
+      color: #111827 !important;
+      margin-bottom: 8px !important;
+    }
+    .driver-popover.unibridge-driver-popover .driver-popover-description {
+      font-size: 14px !important;
+      color: #4B5563 !important;
+      line-height: 1.5 !important;
+    }
+    .driver-popover.unibridge-driver-popover .driver-popover-next-btn,
+    .driver-popover.unibridge-driver-popover .driver-popover-done-btn {
+      background-color: #49B568 !important;
+      color: #fff !important;
+      border-radius: 8px !important;
+      padding: 8px 16px !important;
+      font-weight: 600 !important;
+      border: none !important;
+      text-shadow: none !important;
+    }
+    .driver-popover.unibridge-driver-popover .driver-popover-prev-btn {
+      border-radius: 8px !important;
+      padding: 8px 16px !important;
       border: 1px solid #d1d5db !important;
       color: #374151 !important;
       background: #fff !important;
+      text-shadow: none !important;
     }
-    .driver-popover.unibridge-tour .driver-popover-next-btn {
-      border-color: #49b568 !important;
-      background: #49b568 !important;
-      color: #fff !important;
+    .driver-popover.unibridge-driver-popover .driver-popover-close-btn {
+      color: #6b7280 !important;
     }
-    .driver-popover.unibridge-tour .driver-popover-prev-btn { color: #374151 !important; background: #fff !important; }
-    .driver-popover.unibridge-tour .driver-popover-close-btn { display: none !important; }
-    .driver-popover.unibridge-tour .driver-popover-progress-text { color: #6b7280 !important; }
+    .driver-popover.unibridge-driver-popover .driver-popover-progress-text {
+      color: #6b7280 !important;
+      font-weight: 600 !important;
+    }
   `;
   document.head.appendChild(style);
 }
 
-function selectIfExists(selector: string, step: Omit<DriveStep, "element">): DriveStep | null {
-  if (!document.querySelector(selector)) return null;
-  return { element: selector, ...step };
+function getQueryParam(name: string) {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name) ?? "";
 }
 
-type TourSession = {
-  uid: string;
-  refreshToken: string;
-  completed: boolean;
-};
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForElement(selector: string, timeoutMs = 7000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (document.querySelector(selector)) return true;
+    await sleep(120);
+  }
+  return Boolean(document.querySelector(selector));
+}
 
 export default function OnboardingTour() {
   const pathname = usePathname() || "";
-  const [session, setSession] = useState<TourSession | null>(null);
-  const [running, setRunning] = useState(false);
-  const driverRef = useRef<Driver | null>(null);
-  const skippedRef = useRef(false);
+  const router = useRouter();
 
-  const isEligiblePage = useMemo(() => pathname === "/" || pathname === "/home" || pathname === "/profile/settings", [pathname]);
+  const [uid, setUid] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const driverRef = useRef<Driver | null>(null);
+  const internalDestroyRef = useRef(false);
+
+  const currentPath = normalizePath(pathname);
+
+  const getProgress = (userId: string) => {
+    const raw = localStorage.getItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`);
+    const n = raw ? Number(raw) : 0;
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+
+  const saveProgress = (userId: string, idx: number) => {
+    localStorage.setItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`, String(idx));
+  };
+
+  const markDone = async (userId: string) => {
+    localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${userId}`, "true");
+    localStorage.removeItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`);
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+
+    await fetch("/api/onboarding/status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ completed: true })
+    }).catch(() => undefined);
+  };
+
+  const cleanupDriver = () => {
+    if (!driverRef.current) return;
+    internalDestroyRef.current = true;
+    try {
+      driverRef.current.destroy();
+    } catch {
+      // noop
+    }
+    driverRef.current = null;
+  };
+
+  const handleSkip = async () => {
+    if (!uid) return;
+    cleanupDriver();
+    await markDone(uid);
+    setRunning(false);
+    setCurrentIndex(TOUR_STEPS.length);
+  };
 
   useEffect(() => {
     let mounted = true;
 
-    const load = async () => {
-      try {
-        const supabase = getSupabaseClient();
-        if (!supabase) return;
+    const boot = async () => {
+      injectTourStyles();
 
-        const { data: authData } = await supabase.auth.getSession();
-        const authSession = authData.session;
-        if (!authSession || !authSession.user?.id) {
-          if (mounted) setSession(null);
-          return;
-        }
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user;
 
-        const uid = authSession.user.id;
-        const refreshToken = authSession.refresh_token || "";
-
-        const localDone = localStorage.getItem(`${TOUR_DONE_KEY_PREFIX}${uid}`) === "true";
-        if (localDone) {
-          if (mounted) setSession({ uid, refreshToken, completed: true });
-          return;
-        }
-
-        const res = await fetch("/api/onboarding/status", {
-          headers: { Authorization: `Bearer ${authSession.access_token}` },
-          cache: "no-store"
-        });
-        const payload = await res.json().catch(() => ({}));
-        const completed = Boolean(payload?.completed);
-
-        if (completed) {
-          localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${uid}`, "true");
-        }
-
-        if (mounted) setSession({ uid, refreshToken, completed });
-      } catch {
-        if (mounted) setSession(null);
+      if (!mounted) return;
+      if (!user?.id) {
+        setUid(null);
+        setRunning(false);
+        return;
       }
+
+      const localDone = localStorage.getItem(`${TOUR_DONE_KEY_PREFIX}${user.id}`) === "true";
+      if (localDone) {
+        setUid(null);
+        setRunning(false);
+        return;
+      }
+
+      const token = data.session?.access_token;
+      if (token) {
+        const res = await fetch("/api/onboarding/status", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store"
+        }).catch(() => null);
+        const payload = await res?.json().catch(() => ({}));
+        if (payload?.completed) {
+          localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${user.id}`, "true");
+          setUid(null);
+          setRunning(false);
+          return;
+        }
+      }
+
+      setUid(user.id);
+      setCurrentIndex(getProgress(user.id));
     };
 
-    void load();
+    void boot();
 
     return () => {
       mounted = false;
@@ -125,183 +256,136 @@ export default function OnboardingTour() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!session || session.completed || !isEligiblePage) return;
-
-    injectTourStyles();
-
-    const loginKey = `${session.uid}:${session.refreshToken}`;
-    const skipKey = `${TOUR_SKIP_KEY_PREFIX}${session.uid}`;
-    if (sessionStorage.getItem(skipKey) === loginKey) return;
-
-    const steps: DriveStep[] = [];
-
-    if (pathname === "/" || pathname === "/home") {
-      const s1 = selectIfExists("#welcome-card", {
-        popover: {
-          title: "Step 1: ようこそ",
-          description: "ここからユニブリの使い方を30秒で案内します。",
-          side: "bottom",
-          align: "center"
-        }
-      });
-      if (s1) steps.push(s1);
-
-      const s2 = selectIfExists("#register-button", {
-        popover: {
-          title: "Step 2: まずは探す",
-          description: "この検索から、相性の良い先輩を見つけられます。",
-          side: "bottom",
-          align: "start"
-        }
-      });
-      if (s2) steps.push(s2);
+    if (!uid) return;
+    if (currentIndex >= TOUR_STEPS.length) {
+      void markDone(uid);
+      setRunning(false);
+      return;
     }
 
-    if (pathname === "/profile/settings") {
-      const p1 = selectIfExists("#profile-tab", {
-        popover: {
-          title: "Step 1: プロフィール",
-          description: "まずはプロフィールを整えると、マッチ率が上がります。",
-          side: "bottom",
-          align: "start"
+    let cancelled = false;
+
+    const startStep = async () => {
+      const step = TOUR_STEPS[currentIndex];
+
+      if (step.path !== currentPath) {
+        if (step.path === "/profile/settings" && currentPath === "/profile/settings") {
+          const tab = getQueryParam("tab");
+          if (tab !== "profile") router.replace("/profile/settings?tab=profile");
         }
-      });
-      if (p1) steps.push(p1);
-
-      const p2 = selectIfExists("#interest-tags", {
-        popover: {
-          title: "Step 2: 探究テーマ",
-          description: "探究テーマを入れると、推薦精度が上がります。",
-          side: "top",
-          align: "start"
-        }
-      });
-      if (p2) steps.push(p2);
-
-      const p3 = selectIfExists("#status-toggle", {
-        popover: {
-          title: "Step 3: 公開設定",
-          description: "公開ONで、高校生から見つけてもらえる状態になります。",
-          side: "left",
-          align: "center"
-        }
-      });
-      if (p3) steps.push(p3);
-
-      const p4 = selectIfExists("#save-profile-button", {
-        popover: {
-          title: "Step 4: 完了",
-          description: "最後に保存して準備完了です。",
-          side: "top",
-          align: "center"
-        }
-      });
-      if (p4) steps.push(p4);
-    }
-
-    if (steps.length === 0) return;
-
-    skippedRef.current = false;
-    const driverObj = driver({
-      showProgress: true,
-      animate: true,
-      smoothScroll: true,
-      stagePadding: 8,
-      allowClose: false,
-      popoverClass: "unibridge-tour",
-      nextBtnText: "Next",
-      prevBtnText: "Previous",
-      doneBtnText: "Done",
-      onDestroyed: () => {
-        setRunning(false);
+        return;
       }
-    });
 
-    driverRef.current = driverObj;
-    driverObj.setSteps(steps);
-    setRunning(true);
-    driverObj.drive();
+      if (step.path === "/profile/settings") {
+        const tab = getQueryParam("tab");
+        if (tab !== "profile") {
+          router.replace("/profile/settings?tab=profile");
+          return;
+        }
+      }
 
-    const doneBtn = () => {
-      if (skippedRef.current) return;
-      localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${session.uid}`, "true");
+      if (step.selector) {
+        const ok = await waitForElement(step.selector, 7000);
+        if (!ok && !cancelled) {
+          const next = currentIndex + 1;
+          saveProgress(uid, next);
+          setCurrentIndex(next);
+          return;
+        }
+      }
+      if (cancelled) return;
 
-      const supabase = getSupabaseClient();
-      if (!supabase) return;
+      const moveTo = async (nextIndex: number) => {
+        cleanupDriver();
+        setRunning(false);
 
-      void supabase.auth.getSession().then(({ data }) => {
-        const accessToken = data.session?.access_token;
-        if (!accessToken) return;
-        void fetch("/api/onboarding/status", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`
+        if (nextIndex >= TOUR_STEPS.length) {
+          await markDone(uid);
+          return;
+        }
+
+        saveProgress(uid, nextIndex);
+        setCurrentIndex(nextIndex);
+
+        const nextStep = TOUR_STEPS[nextIndex];
+        if (nextStep.path !== currentPath) {
+          router.push(nextStep.path === "/profile/settings" ? "/profile/settings?tab=profile" : "/home");
+        }
+      };
+
+      const oneStep: DriveStep = {
+        element: step.selector ?? "body",
+        popover: {
+          title: step.title,
+          description: step.description,
+          side: step.side ?? (step.selector ? "bottom" : "over"),
+          align: step.align ?? "center",
+          onNextClick: () => {
+            void moveTo(currentIndex + 1);
           },
-          body: JSON.stringify({ completed: true })
-        });
+          onPrevClick: () => {
+            void moveTo(Math.max(0, currentIndex - 1));
+          },
+          onCloseClick: () => {
+            if (window.confirm("チュートリアルをスキップしますか？")) {
+              void handleSkip();
+            }
+          }
+        }
+      };
+
+      const driverObj = driver({
+        showProgress: true,
+        nextBtnText: "次へ →",
+        prevBtnText: "← 戻る",
+        doneBtnText: "完了！",
+        allowClose: true,
+        animate: true,
+        stagePadding: 8,
+        popoverClass: "unibridge-driver-popover",
+        onDestroyStarted: () => {
+          if (internalDestroyRef.current) {
+            internalDestroyRef.current = false;
+            driverObj.destroy();
+            return;
+          }
+          if (window.confirm("チュートリアルをスキップしますか？")) {
+            void handleSkip();
+          }
+        },
+        onDestroyed: () => {
+          setRunning(false);
+        },
+        steps: [oneStep]
       });
+
+      driverRef.current = driverObj;
+      setRunning(true);
+      driverObj.drive(0);
     };
 
-    const observer = new MutationObserver(() => {
-      const done = document.querySelector<HTMLButtonElement>(".driver-popover-next-btn");
-      if (!done) return;
-      if (done.dataset.unibridgeDoneBound === "1") return;
-      const progress = document.querySelector(".driver-popover-progress-text")?.textContent || "";
-      const parts = progress.split("/").map((v) => Number(v.trim()));
-      const isLast = parts.length === 2 && parts[0] === parts[1] && parts[0] > 0;
-      if (!isLast) return;
-
-      done.dataset.unibridgeDoneBound = "1";
-      done.addEventListener(
-        "click",
-        () => {
-          doneBtn();
-        },
-        { once: true }
-      );
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+    void startStep();
 
     return () => {
-      observer.disconnect();
-      try {
-        driverObj.destroy();
-      } catch {
-        // noop
-      }
-      driverRef.current = null;
+      cancelled = true;
+      cleanupDriver();
+      setRunning(false);
     };
-  }, [isEligiblePage, pathname, session]);
-
-  const onSkip = () => {
-    if (!session) return;
-    skippedRef.current = true;
-    sessionStorage.setItem(`${TOUR_SKIP_KEY_PREFIX}${session.uid}`, `${session.uid}:${session.refreshToken}`);
-    if (driverRef.current) {
-      try {
-        driverRef.current.destroy();
-      } catch {
-        // noop
-      }
-    }
-    setRunning(false);
-  };
+  }, [uid, currentPath, currentIndex, router]);
 
   return (
     <AnimatePresence>
       {running ? (
         <motion.button
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.2 }}
-          onClick={onSkip}
-          className="fixed right-4 top-4 z-[99999] rounded-xl border border-white/50 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow-lg hover:bg-white"
           type="button"
+          onClick={() => void handleSkip()}
+          className="fixed right-4 top-4 z-[99999] rounded-xl border border-white/60 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow-lg hover:bg-white"
         >
-          Skip
+          スキップ
         </motion.button>
       ) : null}
     </AnimatePresence>

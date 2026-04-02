@@ -3,6 +3,14 @@ import { requireStrictAdminFromBearer } from "../../../../../lib/auth/requireStr
 import { writeSecurityAudit } from "../../../../../lib/security/audit";
 import { getRequestMeta } from "../../../../../lib/security/requestMeta";
 
+function isMissingReportsDetailsColumn(message: string) {
+  const m = message.toLowerCase();
+  return (
+    m.includes("column reports.details does not exist") ||
+    m.includes("could not find the 'details' column")
+  );
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { user, supabaseAdmin } = await requireStrictAdminFromBearer(req);
@@ -23,7 +31,22 @@ export async function GET(req: NextRequest) {
       query = query.eq("report_type", reportType);
     }
 
-    const { data, error } = await query;
+    let { data, error } = await query;
+    if (error && isMissingReportsDetailsColumn(error.message)) {
+      let fallbackQuery = supabaseAdmin
+        .from("reports")
+        .select("id, reporter_id, target_user_id, request_id, report_type, category, detail, status, admin_note, reviewed_by, reviewed_at, updated_at, created_at")
+        .order("created_at", { ascending: false });
+      if (status && ["open", "reviewing", "resolved", "dismissed"].includes(status)) {
+        fallbackQuery = fallbackQuery.eq("status", status);
+      }
+      if (reportType && ["user", "request", "message", "call", "other"].includes(reportType)) {
+        fallbackQuery = fallbackQuery.eq("report_type", reportType);
+      }
+      const fallback = await fallbackQuery;
+      data = (fallback.data ?? []).map((row) => ({ ...row, details: (row as { detail?: string }).detail ?? "" }));
+      error = fallback.error;
+    }
     if (error) {
       const missingReportsTable =
         error.message.includes("Could not find the table 'public.reports'") ||

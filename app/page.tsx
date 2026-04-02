@@ -182,7 +182,7 @@ export default function HomePage() {
           <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
             <div className="mx-auto mb-10 max-w-3xl text-center">
               <h1 className="hero-headline mb-4 text-4xl font-bold leading-tight text-white md:text-6xl">大学生に聞こう。</h1>
-              <p className="hero-subcopy text-lg text-white/95">志望校の現役生が、あなたのAO入試・探究活動をマンツーマンでサポートします。</p>
+              <p className="hero-subcopy text-lg text-white/95">志望校の大学生があなたの受験をマンツーマンでサポートします</p>
             </div>
 
             <div className="relative mx-auto max-w-4xl">
