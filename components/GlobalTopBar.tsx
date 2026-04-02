@@ -9,6 +9,7 @@ import { getSupabaseClient } from "../lib/supabase/client";
 
 type ProfileState = {
   name: string;
+  email: string;
   roleLabel: string;
   avatarUrl: string;
   role: "student" | "tutor" | "admin";
@@ -37,6 +38,7 @@ export default function GlobalTopBar() {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [profile, setProfile] = useState<ProfileState>({
     name: "ログインしてください",
+    email: "",
     roleLabel: "ゲスト",
     avatarUrl: "",
     role: "student",
@@ -47,6 +49,7 @@ export default function GlobalTopBar() {
     const setGuest = () => {
       setProfile({
         name: "ログインしてください",
+        email: "",
         roleLabel: "ゲスト",
         avatarUrl: "",
         role: "student",
@@ -63,6 +66,7 @@ export default function GlobalTopBar() {
           : (await supabase.auth.getSession()).data.session;
 
       const uid = currentSession?.user.id;
+      const email = currentSession?.user.email ?? "";
       if (!uid) {
         setGuest();
         return;
@@ -81,6 +85,7 @@ export default function GlobalTopBar() {
       if (baseError) {
         setProfile({
           name: fallbackName,
+          email,
           roleLabel: fallbackRole === "tutor" ? "大学生" : fallbackRole === "admin" ? "運営" : "高校生",
           avatarUrl: tutorProfile?.avatar_url || "",
           role: fallbackRole,
@@ -91,6 +96,7 @@ export default function GlobalTopBar() {
 
       setProfile({
         name: baseProfile?.full_name || fallbackName,
+        email,
         roleLabel: baseProfile?.role === "tutor" ? "大学生" : baseProfile?.role === "admin" ? "運営" : "高校生",
         avatarUrl: tutorProfile?.avatar_url || "",
         role: (baseProfile?.role as "student" | "tutor" | "admin") || fallbackRole,
@@ -229,7 +235,13 @@ export default function GlobalTopBar() {
                     アカウント設定
                   </Link>
                   <Link
-                    href={profile.isGuest ? "/auth/login" : profile.role === "admin" ? "/admin" : "/profile/management"}
+                    href={
+                      profile.isGuest
+                        ? "/auth/login"
+                        : profile.role === "admin"
+                          ? `/auth/2fa?mode=admin&returnTo=${encodeURIComponent("/admin")}${profile.email ? `&email=${encodeURIComponent(profile.email)}` : ""}`
+                          : "/profile/management"
+                    }
                     className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
                   >
                     管理ページ

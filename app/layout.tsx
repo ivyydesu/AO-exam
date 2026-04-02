@@ -5,8 +5,40 @@ import SessionIdleGuard from "../components/SessionIdleGuard";
 import AppShell from "../components/AppShell";
 
 export const metadata: Metadata = {
-  title: "ユニブリ",
-  description: "高校生と大学生のAO対策マッチング"
+  metadataBase: new URL("https://unibridge.website"),
+  title: {
+    default: "UniBridge（ユニブリ）",
+    template: "%s | UniBridge（ユニブリ）"
+  },
+  description: "",
+  applicationName: "UniBridge（ユニブリ）",
+  alternates: {
+    canonical: "/"
+  },
+  openGraph: {
+    title: "UniBridge（ユニブリ）",
+    description: "",
+    url: "https://unibridge.website",
+    siteName: "UniBridge（ユニブリ）",
+    locale: "ja_JP",
+    type: "website"
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "UniBridge（ユニブリ）",
+    description: ""
+  },
+  robots: {
+    index: true,
+    follow: true,
+    nocache: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      noimageindex: false,
+      "max-snippet": 0
+    }
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

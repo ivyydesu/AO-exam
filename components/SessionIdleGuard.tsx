@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseClient } from "../lib/supabase/client";
 
-const HIDDEN_IDLE_MS = 45 * 60 * 1000;
+const HIDDEN_IDLE_MS = 30 * 60 * 1000;
 
 export default function SessionIdleGuard() {
   const pathname = usePathname();
@@ -31,7 +31,7 @@ export default function SessionIdleGuard() {
         const { data } = await supabase.auth.getSession();
         if (!data.session) return;
         await supabase.auth.signOut();
-        router.replace("/auth/login?expired=1");
+        router.replace("/auth/login?autoLoggedOut=1");
       }, HIDDEN_IDLE_MS);
     };
 

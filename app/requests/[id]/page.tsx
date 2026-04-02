@@ -197,7 +197,7 @@ export default function RequestDetailPage() {
   const isTutor = sessionUserId === request.tutor_id || (sessionRole === "tutor" && !request.tutor_id);
   const canOpenChat = ["escrowed", "completed"].includes(request.status);
   const showVideoButton = canOpenChat && formDetail?.support_method?.includes("オンライン");
-  const videoCallsEnabled = process.env.NEXT_PUBLIC_VIDEO_CALLS_ENABLED !== "false";
+  const videoCallsEnabled = process.env.NEXT_PUBLIC_VIDEO_CALLS_ENABLED === "true";
   const allowApprove = isTutor && request.status === "draft";
 
   const requestedPrice = Number(formDetail?.requested_price ?? request.budget ?? 0);

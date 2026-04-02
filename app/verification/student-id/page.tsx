@@ -70,6 +70,10 @@ export default function StudentIdVerificationPage() {
       setError("学生証の表・裏画像を選択してください");
       return;
     }
+    if (frontFile.size > 3 * 1024 * 1024 || backFile.size > 3 * 1024 * 1024) {
+      setError("ファイルサイズは表・裏ともに3MB以下にしてください");
+      return;
+    }
     if (!/^\d{4}$/.test(admissionYear) || !/^\d{4}$/.test(graduationYear)) {
       setError("入学年度・卒業予定年度は4桁の西暦で入力してください");
       return;
@@ -149,7 +153,7 @@ export default function StudentIdVerificationPage() {
             <input
               className="input"
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
               onChange={(e) => setFrontFile(e.target.files?.[0] ?? null)}
             />
           </label>
@@ -158,7 +162,7 @@ export default function StudentIdVerificationPage() {
             <input
               className="input"
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
               onChange={(e) => setBackFile(e.target.files?.[0] ?? null)}
             />
           </label>

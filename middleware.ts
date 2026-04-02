@@ -36,6 +36,18 @@ function applySecurityHeaders(req: NextRequest, res: NextResponse) {
 
 export function middleware(req: NextRequest) {
   const { pathname, origin: reqOrigin } = req.nextUrl;
+  const videoCallsEnabled = process.env.VIDEO_CALLS_ENABLED === "true";
+
+  // Legal hold: completely hide video-call routes/APIs until explicitly enabled.
+  if (!videoCallsEnabled) {
+    if (
+      pathname.startsWith("/call") ||
+      pathname.startsWith("/camera-test") ||
+      pathname.startsWith("/api/calls/")
+    ) {
+      return applySecurityHeaders(req, new NextResponse("Not Found", { status: 404 }));
+    }
+  }
 
   // Global CSRF gate for mutation APIs.
   // Webhook / server-to-server endpoints are excluded and protected separately.

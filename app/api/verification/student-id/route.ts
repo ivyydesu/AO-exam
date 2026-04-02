@@ -127,9 +127,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "学生証の表・裏画像が必要です" }, { status: 400 });
     }
 
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
     if (!allowed.includes(frontFile.type) || !allowed.includes(backFile.type)) {
-      return NextResponse.json({ error: "Only jpeg/png/webp are allowed" }, { status: 400 });
+      return NextResponse.json({ error: "jpeg/png/webp/heic/heif のみ対応しています" }, { status: 400 });
+    }
+    if (frontFile.size > 3 * 1024 * 1024 || backFile.size > 3 * 1024 * 1024) {
+      return NextResponse.json({ error: "ファイルサイズは表・裏ともに3MB以下にしてください" }, { status: 400 });
     }
     if (!/^\d{4}$/.test(admissionYear) || !/^\d{4}$/.test(graduationYear)) {
       return NextResponse.json({ error: "入学年度・卒業予定年度は4桁の西暦で入力してください" }, { status: 400 });
@@ -142,8 +145,26 @@ export async function POST(req: NextRequest) {
     const backBytes = await backFile.arrayBuffer();
     const frontBuffer = Buffer.from(frontBytes);
     const backBuffer = Buffer.from(backBytes);
-    const frontExtension = frontFile.type === "image/png" ? "png" : frontFile.type === "image/webp" ? "webp" : "jpg";
-    const backExtension = backFile.type === "image/png" ? "png" : backFile.type === "image/webp" ? "webp" : "jpg";
+    const frontExtension =
+      frontFile.type === "image/png"
+        ? "png"
+        : frontFile.type === "image/webp"
+          ? "webp"
+          : frontFile.type === "image/heic"
+            ? "heic"
+            : frontFile.type === "image/heif"
+              ? "heif"
+              : "jpg";
+    const backExtension =
+      backFile.type === "image/png"
+        ? "png"
+        : backFile.type === "image/webp"
+          ? "webp"
+          : backFile.type === "image/heic"
+            ? "heic"
+            : backFile.type === "image/heif"
+              ? "heif"
+              : "jpg";
     const base = `${user.id}/${Date.now()}`;
     const frontPath = `${base}-student-id-front.${frontExtension}`;
     const backPath = `${base}-student-id-back.${backExtension}`;

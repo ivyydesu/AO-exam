@@ -1,5 +1,5 @@
 export function isVideoCallsEnabled() {
-  return process.env.VIDEO_CALLS_ENABLED !== "false";
+  return process.env.VIDEO_CALLS_ENABLED === "true";
 }
 
 export function isDailyProvisioningError(message: string) {

@@ -378,7 +378,7 @@ export default function ChatHomePage() {
   const canChat = selectedRequest ? !["rejected", "canceled", "cancelled"].includes(selectedRequest.status) : false;
   const prepayMode = selectedRequest ? !isPaidRequest(selectedRequest) : false;
   const isOnlineMethod = Boolean(selectedDetail?.support_method?.includes("オンライン"));
-  const videoCallsEnabled = process.env.NEXT_PUBLIC_VIDEO_CALLS_ENABLED !== "false";
+  const videoCallsEnabled = process.env.NEXT_PUBLIC_VIDEO_CALLS_ENABLED === "true";
   const messagePlaceholder = selectedRequest
     ? messageExampleForRequest(selectedRequest.title, selectedDetail?.support_method)
     : "メッセージを入力";

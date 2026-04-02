@@ -34,8 +34,10 @@ function LoginPageContent() {
   useEffect(() => {
     const registered = searchParams.get("registered");
     const verified = searchParams.get("verified");
+    const autoLoggedOut = searchParams.get("autoLoggedOut");
     if (registered === "1") setNotice("登録完了。メール認証後にログインしてください。");
     if (verified === "1") setNotice("メール認証が完了しました。ログインできます。");
+    if (autoLoggedOut === "1") setNotice("30分以上操作がなかったため、安全のため自動ログアウトしました。");
   }, [searchParams]);
 
   useEffect(() => {
