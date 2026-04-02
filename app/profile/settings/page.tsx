@@ -227,6 +227,34 @@ export default function ProfileSettingsPage() {
     }
   };
 
+  const onSaveBasicProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoadingProfile(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabase client is not initialized");
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) throw new Error("ログインが必要です");
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          full_name: form.full_name.trim(),
+          school: form.school.trim()
+        })
+        .eq("id", data.session.user.id);
+
+      if (updateError) throw new Error(updateError.message);
+      setNotice("プロフィールを保存しました");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "プロフィール保存に失敗しました");
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
   const onTogglePublish = async () => {
     setLoadingPublish(true);
     setError(null);
@@ -443,9 +471,13 @@ export default function ProfileSettingsPage() {
                 <p className="mt-2 text-sm text-[#6B7280]">プロフィール設定・通知設定・ログイン設定に移動できます。</p>
               </div>
                 <div className="divide-y divide-[#E5E7EB]">
+                <ManageListRow
+                  title="プロフィール設定"
+                  desc={userRole === "tutor" ? "公開プロフィール、写真、基本情報を編集します。" : "氏名や学校名などの基本情報を編集します。"}
+                  onClick={() => setTabAndQuery("profile")}
+                />
                 {userRole === "tutor" ? (
                   <>
-                    <ManageListRow title="プロフィール設定" desc="公開プロフィール、写真、基本情報を編集します。" onClick={() => setTabAndQuery("profile")} />
                     <ManageListRow title="学生証認証" desc="学生証の表裏と入学/卒業予定年度を提出します。" onClick={() => router.push("/verification/student-id")} />
                     <ManageListRow title="口座登録" desc="Stripe Connect の振込先口座を設定します。" onClick={() => router.push("/profile/payouts")} />
                   </>
@@ -462,16 +494,42 @@ export default function ProfileSettingsPage() {
           userRole !== "tutor" ? (
             <div className="mx-auto w-full max-w-[820px] px-4 pb-20 pt-8 sm:px-6 lg:px-8">
               <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-sm">
-                <h2 className="text-2xl font-bold text-[#111827]">この設定は大学生メンター向けです</h2>
-                <p className="mt-3 text-sm text-[#6B7280]">高校生アカウントでは、公開プロフィール・学生証認証・振込先口座設定は表示されません。</p>
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setTabAndQuery("manage")}
-                    className="rounded-xl bg-[#10B981] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0ea371]"
-                  >
-                    設定メニューへ戻る
-                  </button>
+                <h2 className="text-2xl font-bold text-[#111827]">基本プロフィール設定</h2>
+                <p className="mt-3 text-sm text-[#6B7280]">高校生アカウント向けの基本情報を更新できます。</p>
+
+                <form className="mt-6 space-y-5" onSubmit={onSaveBasicProfile}>
+                  <ProfileInput
+                    label="氏名"
+                    value={form.full_name}
+                    onChange={(v) => setForm((p) => ({ ...p, full_name: v }))}
+                    placeholder="山田 太郎"
+                  />
+                  <ProfileInput
+                    label="学校名"
+                    value={form.school}
+                    onChange={(v) => setForm((p) => ({ ...p, school: v }))}
+                    placeholder="〇〇高校"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      type="submit"
+                      disabled={loadingProfile}
+                      className="rounded-xl bg-[#10B981] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0ea371] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {loadingProfile ? "保存中..." : "保存する"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTabAndQuery("manage")}
+                      className="rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-sm font-semibold text-[#374151] hover:bg-[#F9FAFB]"
+                    >
+                      設定メニューへ戻る
+                    </button>
+                  </div>
+                </form>
+                <div className="mt-4">
+                  {notice ? <p className="text-sm font-medium text-[#059669]">{notice}</p> : null}
+                  {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
                 </div>
               </div>
             </div>
