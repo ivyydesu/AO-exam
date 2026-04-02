@@ -1,32 +1,30 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { driver, type Driver } from "driver.js";
+import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getSupabaseClient } from "../lib/supabase/client";
 
-const TOUR_DONE_KEY = "hasCompletedTour";
-const TOUR_STEP_KEY = "uniBridgeTourStep";
-const TOUR_ACTIVE_KEY = "uniBridgeTourActive";
+const TOUR_DONE_KEY_PREFIX = "unibridgeTourDone:";
+const TOUR_SKIP_KEY_PREFIX = "unibridgeTourSkipped:";
 
 function injectTourStyles() {
   if (document.getElementById("unibridge-tour-style")) return;
   const style = document.createElement("style");
   style.id = "unibridge-tour-style";
   style.innerHTML = `
-    .driver-overlay {
-      background: rgba(2, 6, 23, 0.68) !important;
-    }
+    .driver-overlay { background: rgba(2, 6, 23, 0.72) !important; }
     .driver-stage {
       border-radius: 12px !important;
-      box-shadow: 0 0 0 3px rgba(73, 181, 104, 0.35) !important;
+      box-shadow: 0 0 0 3px rgba(73, 181, 104, 0.38) !important;
     }
     .driver-popover.unibridge-tour {
-      max-width: min(92vw, 360px) !important;
+      max-width: min(92vw, 380px) !important;
       border: 1px solid #d1fae5 !important;
       border-radius: 14px !important;
-      box-shadow: 0 14px 34px rgba(2, 6, 23, 0.2) !important;
+      box-shadow: 0 14px 34px rgba(2, 6, 23, 0.24) !important;
       color: #1f2937 !important;
     }
     .driver-popover.unibridge-tour .driver-popover-title {
@@ -51,64 +49,165 @@ function injectTourStyles() {
       background: #49b568 !important;
       color: #fff !important;
     }
-    .driver-popover.unibridge-tour .driver-popover-prev-btn {
-      color: #374151 !important;
-      background: #fff !important;
-    }
-    .driver-popover.unibridge-tour .driver-popover-close-btn {
-      color: #6b7280 !important;
-    }
-    .driver-popover.unibridge-tour .driver-popover-progress-text {
-      color: #6b7280 !important;
-    }
+    .driver-popover.unibridge-tour .driver-popover-prev-btn { color: #374151 !important; background: #fff !important; }
+    .driver-popover.unibridge-tour .driver-popover-close-btn { display: none !important; }
+    .driver-popover.unibridge-tour .driver-popover-progress-text { color: #6b7280 !important; }
   `;
   document.head.appendChild(style);
 }
 
-function step(index: number) {
-  localStorage.setItem(TOUR_STEP_KEY, String(index));
+function selectIfExists(selector: string, step: Omit<DriveStep, "element">): DriveStep | null {
+  if (!document.querySelector(selector)) return null;
+  return { element: selector, ...step };
 }
 
-function isDone() {
-  return localStorage.getItem(TOUR_DONE_KEY) === "true";
-}
-
-function completeTour() {
-  localStorage.setItem(TOUR_DONE_KEY, "true");
-  localStorage.removeItem(TOUR_STEP_KEY);
-  localStorage.removeItem(TOUR_ACTIVE_KEY);
-}
+type TourSession = {
+  uid: string;
+  refreshToken: string;
+  completed: boolean;
+};
 
 export default function OnboardingTour() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const driverRef = useRef<Driver | null>(null);
+  const pathname = usePathname() || "";
+  const [session, setSession] = useState<TourSession | null>(null);
   const [running, setRunning] = useState(false);
+  const driverRef = useRef<Driver | null>(null);
+  const skippedRef = useRef(false);
+
+  const isEligiblePage = useMemo(() => pathname === "/" || pathname === "/home" || pathname === "/profile/settings", [pathname]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isDone()) return;
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+
+        const { data: authData } = await supabase.auth.getSession();
+        const authSession = authData.session;
+        if (!authSession || !authSession.user?.id) {
+          if (mounted) setSession(null);
+          return;
+        }
+
+        const uid = authSession.user.id;
+        const refreshToken = authSession.refresh_token || "";
+
+        const localDone = localStorage.getItem(`${TOUR_DONE_KEY_PREFIX}${uid}`) === "true";
+        if (localDone) {
+          if (mounted) setSession({ uid, refreshToken, completed: true });
+          return;
+        }
+
+        const res = await fetch("/api/onboarding/status", {
+          headers: { Authorization: `Bearer ${authSession.access_token}` },
+          cache: "no-store"
+        });
+        const payload = await res.json().catch(() => ({}));
+        const completed = Boolean(payload?.completed);
+
+        if (completed) {
+          localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${uid}`, "true");
+        }
+
+        if (mounted) setSession({ uid, refreshToken, completed });
+      } catch {
+        if (mounted) setSession(null);
+      }
+    };
+
+    void load();
+
+    return () => {
+      mounted = false;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!session || session.completed || !isEligiblePage) return;
 
     injectTourStyles();
 
-    const active = localStorage.getItem(TOUR_ACTIVE_KEY) === "true";
-    const savedStep = Number(localStorage.getItem(TOUR_STEP_KEY) ?? "0");
-    const canStartHome = pathname === "/home" || pathname === "/";
-    const canStartSettings = pathname === "/profile/settings";
+    const loginKey = `${session.uid}:${session.refreshToken}`;
+    const skipKey = `${TOUR_SKIP_KEY_PREFIX}${session.uid}`;
+    if (sessionStorage.getItem(skipKey) === loginKey) return;
 
-    // 開始条件:
-    // - 初回 /home で自動開始
-    // - または前ステップ継続中で /profile/settings に来た時
-    if (!canStartHome && !canStartSettings) return;
-    if (!active && !canStartHome) return;
+    const steps: DriveStep[] = [];
 
-    // ドライバ生成
+    if (pathname === "/" || pathname === "/home") {
+      const s1 = selectIfExists("#welcome-card", {
+        popover: {
+          title: "Step 1: ようこそ",
+          description: "ここからユニブリの使い方を30秒で案内します。",
+          side: "bottom",
+          align: "center"
+        }
+      });
+      if (s1) steps.push(s1);
+
+      const s2 = selectIfExists("#register-button", {
+        popover: {
+          title: "Step 2: まずは探す",
+          description: "この検索から、相性の良い先輩を見つけられます。",
+          side: "bottom",
+          align: "start"
+        }
+      });
+      if (s2) steps.push(s2);
+    }
+
+    if (pathname === "/profile/settings") {
+      const p1 = selectIfExists("#profile-tab", {
+        popover: {
+          title: "Step 1: プロフィール",
+          description: "まずはプロフィールを整えると、マッチ率が上がります。",
+          side: "bottom",
+          align: "start"
+        }
+      });
+      if (p1) steps.push(p1);
+
+      const p2 = selectIfExists("#interest-tags", {
+        popover: {
+          title: "Step 2: 探究テーマ",
+          description: "探究テーマを入れると、推薦精度が上がります。",
+          side: "top",
+          align: "start"
+        }
+      });
+      if (p2) steps.push(p2);
+
+      const p3 = selectIfExists("#status-toggle", {
+        popover: {
+          title: "Step 3: 公開設定",
+          description: "公開ONで、高校生から見つけてもらえる状態になります。",
+          side: "left",
+          align: "center"
+        }
+      });
+      if (p3) steps.push(p3);
+
+      const p4 = selectIfExists("#save-profile-button", {
+        popover: {
+          title: "Step 4: 完了",
+          description: "最後に保存して準備完了です。",
+          side: "top",
+          align: "center"
+        }
+      });
+      if (p4) steps.push(p4);
+    }
+
+    if (steps.length === 0) return;
+
+    skippedRef.current = false;
     const driverObj = driver({
       showProgress: true,
       animate: true,
       smoothScroll: true,
       stagePadding: 8,
-      allowClose: true,
+      allowClose: false,
       popoverClass: "unibridge-tour",
       nextBtnText: "Next",
       prevBtnText: "Previous",
@@ -119,97 +218,54 @@ export default function OnboardingTour() {
     });
 
     driverRef.current = driverObj;
+    driverObj.setSteps(steps);
+    setRunning(true);
+    driverObj.drive();
 
-    const startHomeFlow = () => {
-      localStorage.setItem(TOUR_ACTIVE_KEY, "true");
-      setRunning(true);
-      driverObj.setSteps([
-        {
-          element: "#register-button",
-          popover: {
-            title: "Step 1: 冒険の始まり",
-            description: "まずはここからアカウント登録！SNS連携なら10秒で終わります。",
-            side: "bottom",
-            align: "start"
-          }
-        },
-        {
-          element: "body",
-          popover: {
-            title: "メールを確認してね",
-            description: "届いた認証メールのURLをポチッとするのを忘れずに！",
-            side: "over",
-            align: "center"
-          }
-        }
-      ]);
+    const doneBtn = () => {
+      if (skippedRef.current) return;
+      localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${session.uid}`, "true");
 
-      driverObj.drive(0);
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
 
-      // 2ステップ目完了後に設定ページへ誘導
-      const originalDestroy = driverObj.destroy.bind(driverObj);
-      driverObj.destroy = () => {
-        step(2);
-        originalDestroy();
-        router.push("/profile/settings");
-      };
+      void supabase.auth.getSession().then(({ data }) => {
+        const accessToken = data.session?.access_token;
+        if (!accessToken) return;
+        void fetch("/api/onboarding/status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ completed: true })
+        });
+      });
     };
 
-    const startSettingsFlow = () => {
-      setRunning(true);
-      driverObj.setSteps([
-        {
-          element: "#profile-tab",
-          popover: {
-            title: "Step 2: あなたの武器を登録",
-            description:
-              "大学名や学部を入力しましょう。ここが詳しいほど高校生に信頼されます。",
-            side: "bottom",
-            align: "start"
-          }
+    const observer = new MutationObserver(() => {
+      const done = document.querySelector<HTMLButtonElement>(".driver-popover-next-btn");
+      if (!done) return;
+      if (done.dataset.unibridgeDoneBound === "1") return;
+      const progress = document.querySelector(".driver-popover-progress-text")?.textContent || "";
+      const parts = progress.split("/").map((v) => Number(v.trim()));
+      const isLast = parts.length === 2 && parts[0] === parts[1] && parts[0] > 0;
+      if (!isLast) return;
+
+      done.dataset.unibridgeDoneBound = "1";
+      done.addEventListener(
+        "click",
+        () => {
+          doneBtn();
         },
-        {
-          element: "#interest-tags",
-          popover: {
-            title: "探究テーマを選択",
-            description:
-              "あなたがアドバイスできる分野を選んでください。AIが相性の良い高校生をマッチングします。",
-            side: "bottom",
-            align: "start"
-          }
-        },
-        {
-          element: "#save-profile-button",
-          popover: {
-            title: "準備完了！",
-            description: "最後に保存ボタンを押して、高校生からの依頼を待ちましょう！",
-            side: "top",
-            align: "center"
-          }
-        }
-      ]);
+        { once: true }
+      );
+    });
 
-      driverObj.drive(0);
-
-      const complete = () => {
-        completeTour();
-        setRunning(false);
-      };
-
-      const originalDestroy = driverObj.destroy.bind(driverObj);
-      driverObj.destroy = () => {
-        originalDestroy();
-        complete();
-      };
-    };
-
-    if (pathname === "/profile/settings" && (active || savedStep >= 2)) {
-      startSettingsFlow();
-    } else if (pathname === "/home" || pathname === "/") {
-      startHomeFlow();
-    }
+    observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
+      observer.disconnect();
       try {
         driverObj.destroy();
       } catch {
@@ -217,10 +273,12 @@ export default function OnboardingTour() {
       }
       driverRef.current = null;
     };
-  }, [pathname, router]);
+  }, [isEligiblePage, pathname, session]);
 
   const onSkip = () => {
-    completeTour();
+    if (!session) return;
+    skippedRef.current = true;
+    sessionStorage.setItem(`${TOUR_SKIP_KEY_PREFIX}${session.uid}`, `${session.uid}:${session.refreshToken}`);
     if (driverRef.current) {
       try {
         driverRef.current.destroy();

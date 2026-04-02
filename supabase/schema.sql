@@ -18,6 +18,8 @@ alter table profiles
 add column if not exists suspended_until timestamptz;
 alter table profiles
 add column if not exists suspended_reason text;
+alter table profiles
+add column if not exists onboarding_completed boolean not null default false;
 
 -- LINE connection states (short-lived, for OAuth CSRF protection)
 create table if not exists line_link_states (

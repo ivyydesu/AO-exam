@@ -185,7 +185,7 @@ export default function HomePage() {
               <p className="hero-subcopy text-lg text-white/95">志望校の現役生が、あなたのAO入試・探究活動をマンツーマンでサポートします。</p>
             </div>
 
-            <div className="relative mx-auto max-w-4xl">
+            <div id="welcome-card" className="relative mx-auto max-w-4xl">
               <div className="hero-sticker">一歩先ゆく先輩に気軽に相談</div>
               <div className="hero-search-shell p-6 md:p-8">
                 <div className="mb-4 flex items-center gap-2">
@@ -194,13 +194,17 @@ export default function HomePage() {
                 </div>
                 <div className="flex flex-col gap-4 md:flex-row">
                   <input
+                    id="home-ai-search-input"
                     className="flex-1 rounded-xl border-gray-200 bg-white/90 px-5 py-4 text-base text-gray-900 placeholder-gray-400 shadow-sm focus:border-[#10b981] focus:ring-[#10b981]"
                     placeholder="探究テーマを入力（例：教育行政 いじめ問題、地域の活性化など）"
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     type="text"
                   />
-                  <button className="group flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#10b981] px-8 py-4 font-bold text-white shadow-lg shadow-[#10b981]/30 transition-all hover:bg-[#059669]">
+                  <button
+                    id="register-button"
+                    className="group flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#10b981] px-8 py-4 font-bold text-white shadow-lg shadow-[#10b981]/30 transition-all hover:bg-[#059669]"
+                  >
                     AIでおすすめを検索
                     <span className="transition-transform group-hover:translate-x-1">→</span>
                   </button>

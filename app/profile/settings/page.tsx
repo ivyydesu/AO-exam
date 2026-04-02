@@ -405,7 +405,7 @@ export default function ProfileSettingsPage() {
       <main className="min-w-0 overflow-y-auto">
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#E5E7EB] bg-[#F9FAFB]/90 px-4 py-4 backdrop-blur-md sm:px-6 lg:px-8">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#111827] sm:text-3xl md:text-4xl">
+            <h1 id="profile-tab" className="text-2xl font-bold tracking-tight text-[#111827] sm:text-3xl md:text-4xl">
               {tab === "manage"
                 ? "設定"
                 : tab === "profile"
@@ -535,6 +535,7 @@ export default function ProfileSettingsPage() {
                     </label>
 
                     <button
+                      id="status-toggle"
                       type="button"
                       onClick={onTogglePublish}
                       disabled={loadingPublish}
@@ -578,7 +579,7 @@ export default function ProfileSettingsPage() {
                     </div>
                   </label>
 
-                  <label className="space-y-2 md:col-span-2">
+                  <label id="interest-tags" className="space-y-2 md:col-span-2">
                     <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">探究テーマ</span>
                     <textarea
                       className="w-full resize-none rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
@@ -624,6 +625,7 @@ export default function ProfileSettingsPage() {
                     キャンセル
                   </Link>
                   <button
+                    id="save-profile-button"
                     type="submit"
                     className="flex items-center gap-2 rounded-lg bg-[#10B981] px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-green-500/20 hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={loadingProfile}

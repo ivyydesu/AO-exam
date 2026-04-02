@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import GlobalTopBar from "./GlobalTopBar";
 import AccountSuspensionOverlay from "./AccountSuspensionOverlay";
+import OnboardingTour from "./OnboardingTour";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
@@ -12,6 +13,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       {!isAuthPage ? <GlobalTopBar /> : null}
+      {!isAuthPage ? <OnboardingTour /> : null}
       <main
         data-app-shell="true"
         className={
