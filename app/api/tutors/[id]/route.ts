@@ -35,12 +35,13 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
     const withPublish = await supabaseAdmin
       .from("tutor_profiles")
-      .select("avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
+      .select("nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
       .eq("user_id", tutorId)
       .maybeSingle();
 
     let tutor = withPublish.data as
       | {
+          nickname?: string | null;
           avatar_url: string | null;
           university: string;
           department: string;
@@ -56,7 +57,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     if (withPublish.error) {
       const fallback = await supabaseAdmin
         .from("tutor_profiles")
-        .select("avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio")
+        .select("avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
         .eq("user_id", tutorId)
         .maybeSingle();
       if (fallback.error) {
@@ -72,10 +73,20 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
     }
 
+    let isVerified = false;
+    const { data: verification } = await supabaseAdmin
+      .from("tutor_verifications")
+      .select("status")
+      .eq("user_id", tutorId)
+      .maybeSingle();
+    if (verification?.status === "approved") {
+      isVerified = true;
+    }
+
     return NextResponse.json({
       item: {
         id: tutorId,
-        name: profile.full_name,
+        name: (tutor.nickname ?? "").trim() || profile.full_name,
         school: profile.school ?? "",
         avatar: tutor.avatar_url ?? "",
         university: tutor.university ?? "",
@@ -85,7 +96,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         researchTheme: tutor.research_theme ?? "",
         coachingExperience: tutor.coaching_experience ?? "",
         bio: tutor.bio ?? "",
-        isPublished
+        isPublished,
+        verified: isVerified
       }
     });
   } catch (error) {

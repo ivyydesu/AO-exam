@@ -1,152 +1,160 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import BrandLogo from "../../components/BrandLogo";
 
+type ContactCategory = "service" | "account" | "payment" | "other";
+
+const categories: Array<{ key: ContactCategory; label: string }> = [
+  { key: "service", label: "サービスについて" },
+  { key: "account", label: "アカウント関連" },
+  { key: "payment", label: "決済・料金" },
+  { key: "other", label: "その他" }
+];
+
 export default function ContactPage() {
-  const [category, setCategory] = useState("service");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [subject, setSubject] = useState("");
+  const [category, setCategory] = useState<ContactCategory>("service");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const count = useMemo(() => message.length, [message]);
 
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+
+    if (!name.trim() || !email.trim() || !subject.trim() || !message.trim()) {
+      setError("必須項目を入力してください。");
+      return;
+    }
+    if (message.length > 2000) {
+      setError("本文は2000文字以内で入力してください。");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          subject,
+          category,
+          message
+        })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error ?? "送信に失敗しました");
+      }
+      setNotice("お問い合わせを送信しました。通常24時間以内に運営よりご連絡します。");
+      setSubject("");
+      setMessage("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "送信に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#f9fafb] text-[#1f2937]">
-      <nav className="sticky top-0 z-50 w-full border-b border-[#e5e7eb] bg-white py-4">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 md:px-12">
-          <BrandLogo />
-          <div className="hidden items-center gap-6 text-sm font-medium text-[#6b7280] md:flex">
-            <Link className="transition-colors hover:text-[#00B884]" href="/home">
-              ホーム
-            </Link>
-            <span className="font-semibold text-[#00B884]">お問い合わせ</span>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-[#f8fafc] text-[#111827]">
+      <main className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 md:px-6 md:py-14 lg:grid-cols-[420px_1fr]">
+        <section className="rounded-3xl border border-[#E5E7EB] bg-white p-7 shadow-sm">
+          <BrandLogo size="sm" />
+          <p className="mt-6 text-sm font-semibold tracking-[0.15em] text-[#10B981]">CONTACT</p>
+          <h1 className="mt-2 text-3xl font-bold">お問い合わせ</h1>
+          <p className="mt-4 text-sm leading-7 text-[#4B5563]">
+            ご質問・ご相談を受け付けています。
+            <br />
+            送信内容は運営管理画面で受信し、順次対応します。
+          </p>
 
-      <main className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-12 px-4 py-12 lg:grid-cols-12 lg:px-8">
-        <section className="space-y-8 lg:col-span-5">
-          <div className="space-y-4">
-            <p className="text-sm font-bold uppercase tracking-wider text-[#00B884]">Contact</p>
-            <h1 className="text-4xl font-bold md:text-5xl">お問い合わせ</h1>
-            <p className="text-lg leading-relaxed text-[#6b7280]">
-              ご質問・ご相談は下記フォームからお問い合わせください。
-              <br />
-              ユニブリチームが24時間以内に返信いたします。
-            </p>
-          </div>
-
-          <div className="space-y-3 rounded-2xl border border-[#e5e7eb] bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-            <h3 className="mb-2 text-lg font-bold">クイックサポート</h3>
-            <Link href="/faq" className="flex items-center rounded-xl p-3 transition hover:bg-[#f9fafb]">
-              <span className="mr-4 grid h-10 w-10 place-items-center rounded-full bg-blue-100 text-blue-600">?</span>
-              <div>
-                <p className="font-medium">よくある質問 (FAQ)</p>
-                <p className="text-sm text-[#6b7280]">まずはここをチェック</p>
-              </div>
+          <div className="mt-8 space-y-3 rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
+            <p className="text-sm font-semibold text-[#111827]">よくある導線</p>
+            <Link href="/faq" className="block text-sm text-[#10B981] hover:underline">
+              よくある質問を見る
             </Link>
-            <a href="#" className="flex items-center rounded-xl p-3 transition hover:bg-[#f9fafb]">
-              <span className="mr-4 grid h-10 w-10 place-items-center rounded-full bg-purple-100 text-purple-600">💬</span>
-              <div>
-                <p className="font-medium">チャットサポート</p>
-                <p className="text-sm text-[#6b7280]">リアルタイムで相談</p>
-              </div>
-            </a>
-            <Link href="/terms" className="flex items-center rounded-xl p-3 transition hover:bg-[#f9fafb]">
-              <span className="mr-4 grid h-10 w-10 place-items-center rounded-full bg-orange-100 text-orange-600">📘</span>
-              <div>
-                <p className="font-medium">コミュニティガイドライン</p>
-                <p className="text-sm text-[#6b7280]">ご利用のルールについて</p>
-              </div>
+            <Link href="/terms" className="block text-sm text-[#10B981] hover:underline">
+              利用規約を確認する
             </Link>
           </div>
-          <p className="text-sm text-[#6b7280]">support@aomatch.com</p>
         </section>
 
-        <section className="lg:col-span-7">
-          <form className="relative overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white p-8 shadow-[0_4px_20px_rgba(0,0,0,0.05)] md:p-10">
-            <div className="space-y-7">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#6b7280]" htmlFor="name">
-                  お名前 <span className="text-red-500">*</span>
-                </label>
-                <input id="name" className="w-full rounded-xl border-[#e5e7eb] bg-[#f9fafb] px-4 py-3" placeholder="ユニブリ 太郎" />
+        <section className="rounded-3xl border border-[#E5E7EB] bg-white p-7 shadow-sm">
+          <form className="grid gap-5" onSubmit={onSubmit}>
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-[#374151]">お名前 *</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 outline-none focus:border-[#10B981]" />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-[#374151]">メールアドレス *</span>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 outline-none focus:border-[#10B981]" />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-[#374151]">件名 *</span>
+              <input value={subject} onChange={(e) => setSubject(e.target.value)} className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 outline-none focus:border-[#10B981]" />
+            </label>
+
+            <div className="grid gap-2">
+              <span className="text-sm font-semibold text-[#374151]">お問い合わせ種別</span>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {categories.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setCategory(item.key)}
+                    className={`rounded-xl border px-3 py-2 text-sm ${category === item.key ? "border-[#10B981] bg-[#ECFDF5] text-[#047857]" : "border-[#E5E7EB] bg-white text-[#4B5563]"}`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#6b7280]" htmlFor="email">
-                  メールアドレス <span className="text-red-500">*</span>
-                </label>
-                <input id="email" type="email" className="w-full rounded-xl border-[#e5e7eb] bg-[#f9fafb] px-4 py-3" placeholder="sample@example.com" />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#6b7280]">お問い合わせ種別</label>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                  {[
-                    { key: "service", label: "サービスについて" },
-                    { key: "account", label: "アカウント関連" },
-                    { key: "other", label: "その他" }
-                  ].map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => setCategory(item.key)}
-                      className={`rounded-lg border px-3 py-2 text-sm transition ${
-                        category === item.key
-                          ? "border-[#00B884] bg-[#00B884]/10 text-[#00B884]"
-                          : "border-[#e5e7eb] bg-[#f9fafb] text-[#374151]"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#6b7280]" htmlFor="message">
-                  内容 <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  id="message"
-                  rows={6}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="w-full resize-y rounded-xl border-[#e5e7eb] bg-[#f9fafb] px-4 py-3"
-                  placeholder="お問い合わせ内容をご記入ください"
-                />
-                <div className="mt-1 text-right text-xs text-[#6b7280]">{count} / 1000文字</div>
-              </div>
-
-              <label className="block cursor-pointer rounded-xl border-2 border-dashed border-[#e5e7eb] bg-[#f9fafb] p-6 text-center transition hover:border-[#00B884]/50">
-                <input type="file" className="hidden" />
-                <p className="text-sm font-medium">ファイルをアップロード</p>
-                <p className="mt-1 text-xs text-[#6b7280]">PNG, JPG, PDF (最大 5MB)</p>
-              </label>
-
-              <button
-                type="button"
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#00B884] px-6 py-4 font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#009c70]"
-              >
-                <span>送信する (デモ)</span>
-                <span>➤</span>
-              </button>
             </div>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-[#374151]">本文 *</span>
+              <textarea
+                rows={8}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className="resize-y rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 outline-none focus:border-[#10B981]"
+                placeholder="お問い合わせ内容をご記入ください"
+              />
+              <span className="text-right text-xs text-[#6B7280]">{count}/2000</span>
+            </label>
+
+            {error ? <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-2 text-sm text-[#B91C1C]">{error}</p> : null}
+            {notice ? <p className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-2 text-sm text-[#047857]">{notice}</p> : null}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-xl bg-[#10B981] px-6 py-3.5 text-sm font-bold text-white transition hover:bg-[#059669] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? "送信中..." : "送信する"}
+            </button>
           </form>
-          <p className="mt-6 text-center text-xs text-[#6b7280]">
-            送信することで、
-            <Link href="/privacy" className="text-[#00B884] hover:underline">
+          <p className="mt-6 text-xs text-[#6B7280]">
+            送信することで
+            <Link href="/privacy" className="mx-1 text-[#10B981] hover:underline">
               プライバシーポリシー
             </Link>
             に同意したものとみなされます。
           </p>
         </section>
       </main>
-
-      <footer className="mt-12 border-t border-[#e5e7eb] bg-white py-8">
-        <div className="mx-auto w-full max-w-7xl px-6 text-center text-sm text-[#6b7280]">© 2024 ユニブリ. All rights reserved.</div>
-      </footer>
     </div>
   );
 }

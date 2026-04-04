@@ -5,6 +5,7 @@ import { getSupabaseClient } from "../../../lib/supabase/client";
 
 export default function AdminStripeFeePage() {
   const [percent, setPercent] = useState(30);
+  const [stripeMode, setStripeMode] = useState<"live" | "test">("test");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export default function AdminStripeFeePage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error ?? "読み込みに失敗しました");
       setPercent(Number(payload.percent ?? 30));
+      setStripeMode(payload.stripeMode === "live" ? "live" : "test");
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込みに失敗しました");
     } finally {
@@ -65,6 +67,14 @@ export default function AdminStripeFeePage() {
       <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-sm">
         <h1 className="text-3xl font-bold text-[#111827]">Stripe 手数料設定</h1>
         <p className="mt-2 text-sm text-[#6B7280]">運営取り分(%)を設定します。0〜95 の整数で入力してください。</p>
+        <p className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${stripeMode === "live" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+          Stripeモード: {stripeMode === "live" ? "本番 (Live)" : "テスト (Test)"}
+        </p>
+        {stripeMode !== "live" ? (
+          <p className="mt-2 text-xs text-amber-700">
+            本番反映するには Vercel の環境変数 `STRIPE_SECRET_KEY` を `sk_live_...` に変更し、再デプロイしてください。
+          </p>
+        ) : null}
 
         {loading ? <p className="mt-6 text-sm text-[#6B7280]">読み込み中...</p> : null}
         {error ? <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
@@ -102,4 +112,3 @@ export default function AdminStripeFeePage() {
     </div>
   );
 }
-

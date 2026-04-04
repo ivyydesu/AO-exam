@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getClient } from "../../../lib/demoClient";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
@@ -19,28 +20,10 @@ type Tutor = {
   avatar: string;
   seminar: string;
   bio: string;
+  verified?: boolean;
 };
 
 const defaultAvatar = "/avatars/mentor.png";
-
-const reviewItems = [
-  {
-    name: "佐藤 K. さん",
-    meta: "高校3年生 / 法学部志望",
-    text: "志望理由書の添削をお願いしました。自分では気づけなかった視点を指摘していただき、内容がとても深まりました。",
-    stars: 5,
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuBeIy9jqCr9UytYtzzOGgcNkWpK6Cji5q3SEVaqR1m4uS4RBMNtnNQZ69JWkIgOcMpbwdj6nAzMowS2JYpBatduww0VsDejudrCcX4yBwuhguo-45LR-H1UqFK7yOoO8OqVSpblLPXGGcGzYm1MUOMgB5DecKKxwGauABzJh8c3XPy-P3ZcwvT7ziTWT56nCmGblZO6ms3mSL8YRmzFjamrgfQLlawKsNTLb6m_N5khMeQlptSCXGamWuz2rDgIhKl0s43PDg47fUQ"
-  },
-  {
-    name: "田中 M. さん",
-    meta: "高校2年生 / 探究活動中",
-    text: "探究テーマがなかなか決まらず悩んでいましたが、木戸先輩との会話の中でやりたいことが見えてきました。",
-    stars: 4,
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuA5gREnNzrxb8iYEAK0LeCpc4sSyG6hODt4QH22zKoYjYGIQPFLXfJLWSH-DGGpOP3QLiAkZKOupF5NHvTpw1BoMHb4xJeNzKVIIAktpNDn6kJjUC90HoJCLv_rtcFDhayygE1ksKTMO_3ULx-3aVWAy5vmhohjF81WGdCYuQBmM-hoELhuKbMLCMv7rPejzVQydEHtBqZJP6TZBD2zXCI8foPSfmC9x9INRfW5eU4jgFtRJ3-IvfqX-gpPF3Ie8BT8fXMbGH3DBJs"
-  }
-];
 
 function parseBulletItems(raw: string, fallback: string[]) {
   const normalized = raw
@@ -52,6 +35,7 @@ function parseBulletItems(raw: string, fallback: string[]) {
 }
 
 export default function ServicePage({ params }: { params: { id: string } }) {
+  const router = useRouter();
   const [tutor, setTutor] = useState<Tutor | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [sessionRole, setSessionRole] = useState<"student" | "tutor" | "admin" | null>(null);
@@ -116,6 +100,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           avatar: string;
           seminar: string;
           bio: string;
+          verified?: boolean;
         };
         setTutor({
           id: item.id,
@@ -130,7 +115,8 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           reviews: 0,
           avatar: item.avatar || defaultAvatar,
           seminar: item.seminar || "教育行政ゼミ",
-          bio: item.bio || ""
+          bio: item.bio || "",
+          verified: Boolean(item.verified)
         });
       } catch {
         setNotFound(true);
@@ -149,7 +135,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) {
-        window.location.href = "/auth/login";
+        router.push("/auth/login");
         return;
       }
       const res = await fetch("/api/messages/start", {
@@ -164,7 +150,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
       if (!res.ok || !payload?.requestId) {
         throw new Error(payload?.error ?? "メッセージ開始に失敗しました");
       }
-      window.location.href = `/chat?requestId=${payload.requestId}`;
+      router.push(`/chat?requestId=${payload.requestId}`);
     } catch (e) {
       setMessageError(e instanceof Error ? e.message : "メッセージ開始に失敗しました");
     } finally {
@@ -232,6 +218,11 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                 <div className="flex flex-1 flex-col">
                   <div className="mb-4">
                     <div className="mb-3 flex flex-wrap gap-2">
+                      {tutor.verified ? (
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                          学生証認証済み
+                        </span>
+                      ) : null}
                       <span className="inline-flex items-center rounded-full border border-green-200 bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">在籍確認済み</span>
                       <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">トップ評価</span>
                       <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-800">返信が早い</span>
@@ -313,28 +304,6 @@ export default function ServicePage({ params }: { params: { id: string } }) {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8">
-              <div className="mb-8 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">先輩へのレビュー</h3>
-              </div>
-              <div className="space-y-6">
-                {reviewItems.map((review) => (
-                  <div key={review.name} className="border-b border-gray-100 pb-6 last:border-0 last:pb-0">
-                    <div className="mb-2 flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <img alt={review.name} className="h-10 w-10 rounded-full object-cover" src={review.avatar} />
-                        <div>
-                          <div className="text-sm font-bold text-gray-900">{review.name}</div>
-                          <div className="text-xs text-gray-500">{review.meta}</div>
-                        </div>
-                      </div>
-                      <div className="text-sm text-yellow-400">{"★".repeat(review.stars)}<span className="text-gray-300">{"★".repeat(5 - review.stars)}</span></div>
-                    </div>
-                    <p className="mt-2 text-sm text-gray-600">{review.text}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
           </div>
 
           <aside className="relative lg:col-span-4">
@@ -345,7 +314,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                 </div>
                 <div className="mb-6">
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-bold text-gray-900">¥3,000</span>
+                    <span className="text-3xl font-bold text-gray-900">¥2,200</span>
                     <span className="text-sm text-gray-500">/ 60分</span>
                   </div>
                   <p className="mt-1 text-xs font-medium text-green-600">初回相談は無料でお試し可能</p>
@@ -398,7 +367,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                 <div>
                   <h4 className="mb-1 text-sm font-bold text-blue-800">安心・安全な取引</h4>
                   <p className="text-xs leading-snug text-blue-700">
-                    本人確認済みユーザーのみが利用可能です。お支払いは運営がお預かりし、指導完了後に支払われます。
+                    学生証認証済みユーザーのみが利用可能です。お支払いは運営がお預かりし、指導完了後に支払われます。
                   </p>
                 </div>
               </div>

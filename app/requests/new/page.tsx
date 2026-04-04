@@ -32,10 +32,10 @@ const DURATIONS = [
 ] as const;
 
 function calcSuggestedPrice(topic: string, method: string, duration: string) {
-  const base: Record<string, number> = { "15m": 3000, "30m": 5000, "60m": 9000, "120m": 15000, "180m": 22000 };
-  const topicBoost = topic === "essay_review" ? 2000 : topic === "interview_prep" ? 3000 : 0;
-  const methodBoost = method === "online_mtg" ? 2000 : 0;
-  return Math.max(3000, (base[duration] ?? 5000) + topicBoost + methodBoost);
+  void topic;
+  void method;
+  void duration;
+  return 2200;
 }
 
 function RequestNewPageContent() {

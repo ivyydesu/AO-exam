@@ -30,19 +30,10 @@ const DURATION_LABELS: Record<string, string> = {
   "180m": "3時間"
 };
 
-const DURATION_BASE_PRICE: Record<string, number> = {
-  "15m": 3000,
-  "30m": 5000,
-  "60m": 9000,
-  "120m": 15000,
-  "180m": 22000
-};
+const FIXED_REQUEST_PRICE = 2200;
 
-function calculateSuggestedPrice(topic: string, method: string, duration: string) {
-  const base = DURATION_BASE_PRICE[duration] ?? 5000;
-  const topicBoost = topic === "essay_review" ? 2000 : topic === "interview_prep" ? 3000 : 0;
-  const methodBoost = method === "online_mtg" ? 2000 : 0;
-  return Math.max(3000, base + topicBoost + methodBoost);
+function calculateSuggestedPrice(_topic: string, _method: string, _duration: string) {
+  return FIXED_REQUEST_PRICE;
 }
 
 export async function POST(req: NextRequest) {
@@ -65,7 +56,6 @@ export async function POST(req: NextRequest) {
     const supportMethod = String(body.supportMethod ?? "");
     const estimatedDuration = String(body.estimatedDuration ?? "");
     const requestedDeadline = String(body.requestedDeadline ?? "");
-    const requestedPrice = Number(body.requestedPrice ?? 0);
     const dryRun = Boolean(body.dryRun);
     const appMode = getAppModeFromRequest(req);
     const allowTestBypass = process.env.NODE_ENV !== "production" && appMode === "test";
@@ -128,7 +118,8 @@ export async function POST(req: NextRequest) {
     const methodLabel = METHOD_LABELS[supportMethod];
     const durationLabel = DURATION_LABELS[estimatedDuration];
     const suggestedPrice = calculateSuggestedPrice(supportTopic, supportMethod, estimatedDuration);
-    const safeRequestedPrice = requestedPrice > 0 ? requestedPrice : suggestedPrice;
+    // 本番方針: 申請時の相場を一律 2,200 円に統一
+    const safeRequestedPrice = FIXED_REQUEST_PRICE;
 
     const title = `AO相談: ${topicLabel}`;
     const description = [
@@ -232,4 +223,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-

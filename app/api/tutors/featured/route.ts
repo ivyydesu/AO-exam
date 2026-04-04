@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 
 type TutorProfileRow = {
   user_id: string;
+  nickname?: string | null;
   avatar_url: string | null;
   university: string;
   department: string;
@@ -35,15 +36,22 @@ export async function GET() {
     const supabaseAdmin = getSupabaseAdmin();
     const { data: tutorProfiles, error: tutorError } = await supabaseAdmin
       .from("tutor_profiles")
-      .select("user_id, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
+      .select("user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
       .eq("is_published", true)
       .limit(200);
 
+    let tutorRows = (tutorProfiles ?? []) as TutorProfileRow[];
     if (tutorError) {
-      return NextResponse.json({ error: tutorError.message }, { status: 400 });
+      const fallback = await supabaseAdmin
+        .from("tutor_profiles")
+        .select("user_id, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
+        .eq("is_published", true)
+        .limit(200);
+      if (fallback.error) {
+        return NextResponse.json({ error: fallback.error.message }, { status: 400 });
+      }
+      tutorRows = (fallback.data ?? []) as TutorProfileRow[];
     }
-
-    const tutorRows = (tutorProfiles ?? []) as TutorProfileRow[];
     if (tutorRows.length === 0) {
       return NextResponse.json({ items: [] });
     }
@@ -126,7 +134,7 @@ export async function GET() {
         const stat = reviewStats.get(row.user_id) ?? { rating: 5, reviews: 0 };
         return {
           id: row.user_id,
-          name: profile.full_name,
+          name: (row.nickname ?? "").trim() || profile.full_name,
           school: profile.school ?? "",
           avatar: row.avatar_url ?? "",
           university: row.university,

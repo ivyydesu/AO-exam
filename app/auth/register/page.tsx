@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 import { normalizeAuthErrorMessage } from "../../../lib/auth/emailThrottle";
+import { getPublicAppUrl } from "../../../lib/auth/appUrl";
 
 const roles = [
   { value: "student", label: "高校生" },
@@ -48,7 +49,7 @@ function RegisterPageContent() {
             role,
             school
           },
-          emailRedirectTo: `${window.location.origin}/auth/login?verified=1`
+          emailRedirectTo: `${getPublicAppUrl()}/auth/verified`
         }
       });
       if (signUpError || !data.user) {

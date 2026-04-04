@@ -19,6 +19,7 @@ type TabKey = "manage" | "profile" | "notifications" | "login";
 
 type TutorForm = {
   full_name: string;
+  nickname: string;
   school: string;
   avatar_url: string;
   cover_url: string;
@@ -40,6 +41,7 @@ type VerificationStatus = {
 
 const initialForm: TutorForm = {
   full_name: "",
+  nickname: "",
   school: "",
   avatar_url: "",
   cover_url: "",
@@ -86,6 +88,22 @@ export default function ProfileSettingsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [emailChangePending, setEmailChangePending] = useState(false);
   const [emailChangeCode, setEmailChangeCode] = useState("");
+
+  useEffect(() => {
+    // Prefetch related routes to reduce perceived delay when users move between settings pages.
+    const routes = [
+      "/profile/settings?tab=manage",
+      "/profile/settings?tab=profile",
+      "/profile/settings?tab=notifications",
+      "/profile/settings?tab=login",
+      "/verification/student-id",
+      "/profile/payouts",
+      "/profile/management"
+    ];
+    for (const href of routes) {
+      router.prefetch(href);
+    }
+  }, [router]);
 
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +210,7 @@ export default function ProfileSettingsPage() {
       const token = await authToken();
       const fd = new FormData();
       fd.append("full_name", form.full_name);
+      fd.append("nickname", form.nickname);
       fd.append("school", form.school);
       fd.append("department", form.department);
       fd.append("seminar", form.seminar);
@@ -574,7 +593,15 @@ export default function ProfileSettingsPage() {
                   <div className="flex-1 pt-2 text-center md:pt-12 md:text-left">
                     <h2 className="flex flex-wrap items-center justify-center gap-2 text-4xl font-bold leading-none text-[#111827] md:justify-start lg:text-5xl">
                       {form.full_name || "kotaro"}
-                      <span className="rounded-full border border-blue-200 bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-600">Verified</span>
+                      {verification.status === "approved" ? (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          学生証認証済み
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                          学生証未認証
+                        </span>
+                      )}
                     </h2>
                     <p className="mt-1 text-sm text-[#6B7280]">{form.school || "成蹊大学"}</p>
                   </div>
@@ -613,6 +640,16 @@ export default function ProfileSettingsPage() {
 
                 <div className="grid grid-cols-1 gap-x-8 gap-y-6 md:grid-cols-2">
                   <ProfileInput label="氏名" value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} />
+                  <label className="space-y-2">
+                    <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">ニックネーム</span>
+                    <input
+                      className="w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
+                      value={form.nickname}
+                      onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+                      placeholder="タロー"
+                    />
+                    <p className="-mt-1 pl-1 text-xs text-[#6B7280]">※ 実際に他のユーザーに表示される名前です</p>
+                  </label>
                   <ProfileInput label="学校名" value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
                   <ProfileInput label="学部学科" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
                   <ProfileInput label="ゼミ" value={form.seminar} onChange={(v) => setForm({ ...form, seminar: v })} />
@@ -647,6 +684,28 @@ export default function ProfileSettingsPage() {
                       onChange={(e) => setForm({ ...form, research_theme: e.target.value })}
                     />
                   </label>
+
+                  <label className="space-y-2 md:col-span-2">
+                    <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">指導経験</span>
+                    <textarea
+                      className="w-full resize-none rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
+                      rows={4}
+                      placeholder="例）志望理由書の添削15件、面接対策10件 など"
+                      value={form.coaching_experience}
+                      onChange={(e) => setForm({ ...form, coaching_experience: e.target.value })}
+                    />
+                  </label>
+
+                  <label className="space-y-2 md:col-span-2">
+                    <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">自己紹介</span>
+                    <textarea
+                      className="w-full resize-none rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
+                      rows={5}
+                      placeholder="高校生に向けて、あなたの強み・サポート方針を書いてください"
+                      value={form.bio}
+                      onChange={(e) => setForm({ ...form, bio: e.target.value })}
+                    />
+                  </label>
                 </div>
 
                 <div className="mt-8 flex justify-end gap-3">
@@ -666,7 +725,7 @@ export default function ProfileSettingsPage() {
                         <p className="mt-1">入学 {verification.admission_year} / 卒業予定 {verification.graduation_year}</p>
                       ) : null}
                       {verification.reason ? <p className="mt-1 text-[#B91C1C]">理由: {verification.reason}</p> : null}
-                      <Link href="/verification/student-id" className="mt-2 inline-block font-semibold text-[#10B981] hover:underline">
+                      <Link id="student-verification-link" href="/verification/student-id" className="mt-2 inline-block font-semibold text-[#10B981] hover:underline">
                         学生証認証ページを開く
                       </Link>
                     </div>
@@ -738,6 +797,7 @@ export default function ProfileSettingsPage() {
                 </div>
                 <div className="border-t border-[#E5E7EB] p-6">
                   <button
+                    id="line-connect-button"
                     type="button"
                     onClick={connectLine}
                     className="rounded-lg border border-[#00B884] px-4 py-2 text-sm font-medium text-[#00B884] hover:bg-[#00B884]/5"
@@ -1130,20 +1190,18 @@ function ManageShortcutCard({
   href: string;
   icon: ReactNode;
 }) {
-  const router = useRouter();
-
   return (
-    <button
-      type="button"
-      onClick={() => router.push(href)}
-      className="w-full cursor-pointer rounded-xl border border-[#E5E7EB] bg-white p-5 text-left shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition hover:-translate-y-0.5 hover:shadow-lg"
+    <Link
+      href={href}
+      prefetch
+      className="block w-full rounded-xl border border-[#E5E7EB] bg-white p-5 text-left shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition hover:-translate-y-0.5 hover:shadow-lg"
     >
       <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#10B981]/10 text-[#10B981]">
         {icon}
       </div>
       <p className="text-base font-semibold text-[#111827]">{title}</p>
       <p className="mt-1 text-sm leading-6 text-[#6B7280]">{desc}</p>
-    </button>
+    </Link>
   );
 }
 

@@ -30,7 +30,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       percent,
-      fallbackPercent: DEFAULT_PLATFORM_FEE_PERCENT
+      fallbackPercent: DEFAULT_PLATFORM_FEE_PERCENT,
+      stripeMode: process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ? "live" : "test"
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";

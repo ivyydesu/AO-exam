@@ -31,14 +31,6 @@ export default function SearchPage() {
   const [items, setItems] = useState<TutorSearchItem[]>([]);
 
   const loadTutors = async () => {
-    const hasCondition = Boolean(seminar.trim() || university.trim() || keyword.trim() || grade.trim());
-    if (!hasCondition) {
-      setItems([]);
-      setError("検索条件を1つ以上入力してください。");
-      setSearchedOnce(true);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     setSearchedOnce(true);
@@ -65,7 +57,6 @@ export default function SearchPage() {
   };
 
   const filteredCountLabel = useMemo(() => `${items.length}件`, [items.length]);
-  const hasAnyCondition = Boolean(seminar.trim() || university.trim() || keyword.trim() || grade.trim());
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-6 py-8">
@@ -179,7 +170,7 @@ export default function SearchPage() {
             <div className="rounded-3xl border border-[#E5E7EB] bg-white p-8 text-sm text-[#6B7280] shadow-sm">
               まだ検索は実行されていません。左の条件を入力して検索してください。
             </div>
-          ) : hasAnyCondition && items.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="rounded-3xl border border-[#E5E7EB] bg-white p-8 text-sm text-[#6B7280] shadow-sm">
               条件に一致する先輩がいません。
             </div>

@@ -7,7 +7,8 @@ function isMissingReportsDetailsColumn(message: string) {
   const m = message.toLowerCase();
   return (
     m.includes("column reports.details does not exist") ||
-    m.includes("could not find the 'details' column")
+    m.includes("could not find the 'details' column") ||
+    (m.includes("details") && m.includes("reports") && m.includes("schema cache"))
   );
 }
 
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from("reports")
-      .select("id, reporter_id, target_user_id, request_id, report_type, category, details, status, admin_note, reviewed_by, reviewed_at, updated_at, created_at")
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (status && ["open", "reviewing", "resolved", "dismissed"].includes(status)) {
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     if (error && isMissingReportsDetailsColumn(error.message)) {
       let fallbackQuery = supabaseAdmin
         .from("reports")
-        .select("id, reporter_id, target_user_id, request_id, report_type, category, detail, status, admin_note, reviewed_by, reviewed_at, updated_at, created_at")
+        .select("*")
         .order("created_at", { ascending: false });
       if (status && ["open", "reviewing", "resolved", "dismissed"].includes(status)) {
         fallbackQuery = fallbackQuery.eq("status", status);
@@ -44,7 +45,10 @@ export async function GET(req: NextRequest) {
         fallbackQuery = fallbackQuery.eq("report_type", reportType);
       }
       const fallback = await fallbackQuery;
-      data = (fallback.data ?? []).map((row) => ({ ...row, details: (row as { detail?: string }).detail ?? "" }));
+      data = (fallback.data ?? []).map((row) => ({
+        ...row,
+        details: (row as { details?: string; detail?: string }).details ?? (row as { detail?: string }).detail ?? ""
+      }));
       error = fallback.error;
     }
     if (error) {
@@ -82,6 +86,7 @@ export async function GET(req: NextRequest) {
 
     const items = (data ?? []).map((item) => ({
       ...item,
+      details: (item as { details?: string; detail?: string }).details ?? (item as { detail?: string }).detail ?? "",
       reporter_name: profileMap[item.reporter_id]?.full_name ?? "Unknown",
       reporter_role: profileMap[item.reporter_id]?.role ?? "",
       target_name: item.target_user_id ? profileMap[item.target_user_id]?.full_name ?? "Unknown" : null,

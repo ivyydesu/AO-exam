@@ -6,7 +6,8 @@ function isMissingReportsDetailsColumn(message: string) {
   const m = message.toLowerCase();
   return (
     m.includes("column reports.details does not exist") ||
-    m.includes("could not find the 'details' column")
+    m.includes("could not find the 'details' column") ||
+    (m.includes("details") && m.includes("reports") && m.includes("schema cache"))
   );
 }
 

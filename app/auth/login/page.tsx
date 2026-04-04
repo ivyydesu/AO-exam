@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 import { isAllowedAdminEmail } from "../../../lib/auth/adminAllowlist";
+import { getPublicAppUrl } from "../../../lib/auth/appUrl";
 import {
   EMAIL_SEND_COOLDOWN_SECONDS,
   getCooldownRemaining,
@@ -124,6 +125,10 @@ function LoginPageContent() {
       const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
       setRoleHint(resolvedRole === "admin" ? "student" : resolvedRole);
 
+      if (resolvedRole !== "admin") {
+        await fetch("/api/auth/admin-2fa/clear", { method: "POST" }).catch(() => undefined);
+      }
+
       if (remember) {
         localStorage.setItem(
           "ao_match_login_saved",
@@ -155,7 +160,7 @@ function LoginPageContent() {
       if (!email) throw new Error("メールアドレスを入力してください");
       if (resetCooldown > 0) throw new Error(`再送まで${resetCooldown}秒お待ちください`);
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`
+        redirectTo: `${getPublicAppUrl()}/auth/reset-password`
       });
       if (resetError) throw new Error(resetError.message);
       startCooldown("reset-password", email);

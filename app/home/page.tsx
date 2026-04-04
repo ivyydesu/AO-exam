@@ -364,7 +364,7 @@ export default function HomePage() {
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="text-lg font-bold text-gray-900">{mentor.name}</h3>
-                              {mentor.verified ? <span className="rounded-full bg-[#10b981]/10 px-2 py-0.5 text-xs font-normal text-[#10b981]">本人確認済</span> : null}
+                              {mentor.verified ? <span className="rounded-full bg-[#10b981]/10 px-2 py-0.5 text-xs font-normal text-[#10b981]">学生証認証済み</span> : null}
                             </div>
                             <p className="mt-1 text-sm text-gray-500">{mentor.university} / {mentor.department} {mentor.grade}</p>
                             <div className="mt-2 text-xs text-gray-500">

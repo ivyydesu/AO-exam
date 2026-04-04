@@ -9,7 +9,8 @@ import { getSupabaseClient } from "../lib/supabase/client";
 
 type TourStepDef = {
   id: string;
-  path: "/home" | "/profile/settings";
+  path: "/profile/settings";
+  tab: "profile" | "notifications";
   selector?: string;
   title: string;
   description: string;
@@ -22,38 +23,42 @@ const TOUR_PROGRESS_KEY_PREFIX = "uniBridgeTourProgress:";
 
 const TOUR_STEPS: TourStepDef[] = [
   {
-    id: "signup-button",
-    path: "/home",
-    selector: "#signup-button",
-    title: "ステップ1：アカウント登録（まずはここから！）",
-    description: "UniBridgeのトップページです。まずは『新規登録』ボタンを押して始めましょう。",
-    side: "bottom",
-    align: "start"
-  },
-  {
-    id: "home-to-profile",
-    path: "/home",
-    selector: "#signup-button",
-    title: "次のステップへ",
-    description: "『次へ』を押すとプロフィール設定画面に移動し、チュートリアルが自動で続きます。",
-    side: "bottom",
-    align: "start"
-  },
-  {
     id: "profile-form",
     path: "/profile/settings",
+    tab: "profile",
     selector: "#profile-form-container",
-    title: "ステップ2：プロフィール登録（あなたの魅力を伝えよう！）",
-    description: "大学名、学部、自己紹介を入力しましょう。情報が具体的なほど高校生に信頼されます。",
+    title: "① プロフィール設定のやり方",
+    description: "まずはプロフィールを入力しましょう。氏名・ニックネーム（表示名）・学校名・学部学科など、基本情報を埋めると信頼されやすくなります。",
+    side: "bottom",
+    align: "start"
+  },
+  {
+    id: "line-connect",
+    path: "/profile/settings",
+    tab: "notifications",
+    selector: "#line-connect-button",
+    title: "② LINE連携のやり方",
+    description: "次にLINEを連携しましょう。通知をLINEで受け取れるようになるので、依頼の見逃しを防げます。",
     side: "top",
     align: "start"
   },
   {
-    id: "save-profile",
+    id: "student-verification",
     path: "/profile/settings",
+    tab: "profile",
+    selector: "#student-verification-link",
+    title: "③ 学生証認証のやり方",
+    description: "学生証認証ページから、学生証の表裏と入学/卒業予定年度を提出してください。承認後に公開範囲を広げられます。",
+    side: "top",
+    align: "start"
+  },
+  {
+    id: "tour-complete",
+    path: "/profile/settings",
+    tab: "profile",
     selector: "#save-profile-button",
-    title: "保存して完了！",
-    description: "入力が終わったら『保存する』を押して準備完了です。",
+    title: "④ これで完璧です！",
+    description: "最後に「保存する」を押して設定を反映すれば準備完了です。高校生からの相談を待ちましょう！",
     side: "top",
     align: "center"
   }
@@ -147,6 +152,7 @@ export default function OnboardingTour() {
   const router = useRouter();
 
   const [uid, setUid] = useState<string | null>(null);
+  const [role, setRole] = useState<"student" | "tutor" | "admin" | null>(null);
   const [running, setRunning] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -218,6 +224,21 @@ export default function OnboardingTour() {
       if (!mounted) return;
       if (!user?.id) {
         setUid(null);
+        setRole(null);
+        setRunning(false);
+        return;
+      }
+
+      const { data: me } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      const resolvedRole = (me?.role as "student" | "tutor" | "admin" | null) ?? null;
+      setRole(resolvedRole);
+      // オンボーディングは大学生（tutor）だけ実行する
+      if (resolvedRole !== "tutor") {
+        setUid(null);
         setRunning(false);
         return;
       }
@@ -256,7 +277,7 @@ export default function OnboardingTour() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || role !== "tutor") return;
     if (currentIndex >= TOUR_STEPS.length) {
       void markDone(uid);
       setRunning(false);
@@ -268,18 +289,16 @@ export default function OnboardingTour() {
     const startStep = async () => {
       const step = TOUR_STEPS[currentIndex];
 
+      // 別ページへ強制遷移させず、対象ページに来た時だけ開始する
       if (step.path !== currentPath) {
-        if (step.path === "/profile/settings" && currentPath === "/profile/settings") {
-          const tab = getQueryParam("tab");
-          if (tab !== "profile") router.replace("/profile/settings?tab=profile");
-        }
+        setRunning(false);
         return;
       }
 
       if (step.path === "/profile/settings") {
         const tab = getQueryParam("tab");
-        if (tab !== "profile") {
-          router.replace("/profile/settings?tab=profile");
+        if (tab !== step.tab) {
+          setRunning(false);
           return;
         }
       }
@@ -308,8 +327,11 @@ export default function OnboardingTour() {
         setCurrentIndex(nextIndex);
 
         const nextStep = TOUR_STEPS[nextIndex];
-        if (nextStep.path !== currentPath) {
-          router.push(nextStep.path === "/profile/settings" ? "/profile/settings?tab=profile" : "/home");
+        if (nextStep.path !== currentPath || getQueryParam("tab") !== nextStep.tab) {
+          // 設定ページ内タブ遷移のみ許可（ページ外へ戻す挙動はしない）
+          if (currentPath === "/profile/settings") {
+            router.push(`/profile/settings?tab=${nextStep.tab}`);
+          }
         }
       };
 
@@ -371,7 +393,7 @@ export default function OnboardingTour() {
       cleanupDriver();
       setRunning(false);
     };
-  }, [uid, currentPath, currentIndex, router]);
+  }, [uid, role, currentPath, currentIndex, router]);
 
   return (
     <AnimatePresence>

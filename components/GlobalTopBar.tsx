@@ -118,14 +118,46 @@ export default function GlobalTopBar() {
     };
   }, []);
 
-  const links = useMemo(
-    () => [
-      { href: "/search", label: "先輩を探す", active: pathname.startsWith("/search") || pathname.startsWith("/service/") },
-      { href: "/chat", label: "メッセージ", active: pathname.startsWith("/chat") },
-      { href: "/guide", label: "ユニブリについて", active: pathname.startsWith("/guide") }
-    ],
-    [pathname]
-  );
+  const links = useMemo(() => {
+    if (profile.isGuest) {
+      return [
+        { href: "/search", label: "先輩を探す", active: pathname.startsWith("/search") || pathname.startsWith("/service/") },
+        { href: "/guide", label: "ユニブリについて", active: pathname.startsWith("/guide") }
+      ];
+    }
+
+    if (profile.role === "admin") {
+      return [{ href: "/admin", label: "運営管理", active: pathname.startsWith("/admin") }];
+    }
+
+    if (profile.role === "student") {
+      return [
+        { href: "/search", label: "先輩を探す", active: pathname.startsWith("/search") || pathname.startsWith("/service/") },
+        { href: "/status", label: "申請状況", active: pathname.startsWith("/status") || pathname.startsWith("/demo/request") },
+        { href: "/chat", label: "メッセージ", active: pathname.startsWith("/chat") }
+      ];
+    }
+
+    return [
+      { href: "/status", label: "申請状況", active: pathname.startsWith("/status") || pathname.startsWith("/demo/request") },
+      { href: "/chat", label: "メッセージ", active: pathname.startsWith("/chat") }
+    ];
+  }, [pathname, profile.isGuest, profile.role]);
+
+  useEffect(() => {
+    // Frequently-used routes are prefetched to make click-to-navigation faster.
+    const targets = [
+      "/home",
+      "/status",
+      "/chat",
+      "/notifications",
+      "/profile/settings?tab=manage",
+      "/profile/management"
+    ];
+    for (const href of targets) {
+      router.prefetch(href);
+    }
+  }, [router]);
 
   const logout = async () => {
     const supabase = getSupabaseClient();
@@ -239,7 +271,7 @@ export default function GlobalTopBar() {
                       profile.isGuest
                         ? "/auth/login"
                         : profile.role === "admin"
-                          ? `/auth/2fa?mode=admin&returnTo=${encodeURIComponent("/admin")}${profile.email ? `&email=${encodeURIComponent(profile.email)}` : ""}`
+                          ? "/admin"
                           : "/profile/management"
                     }
                     className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"

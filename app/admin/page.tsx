@@ -27,6 +27,7 @@ export default function AdminHomePage() {
         <AdminCard title="メッセージ審査" desc="メッセージ通報に絞って審査する管理導線です。" href="/admin/reports?reportType=message" />
         <AdminCard title="チャット監視" desc="運営が全ユーザー間のやり取りを監視・確認できる専用画面です。" href="/admin/chats" />
         <AdminCard title="決済手数料設定" desc="運営取り分(%)を管理します。Stripe決済時の手数料計算に反映されます。" href="/admin/stripe" />
+        <AdminCard title="会社口座登録" desc="Stripeダッシュボードで会社の振込先口座（受取口座）を設定します。" href="/admin/payouts" />
       </div>
     </div>
   );
