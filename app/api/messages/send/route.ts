@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { sanitizePlainText, isSafeHttpUrl } from "../../../../lib/security/input";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 import { assertTrustedOrigin } from "../../../../lib/security/csrf";
+import { createNotification } from "../../../../lib/notifications";
 
 type Body = {
   requestId: string;
@@ -96,6 +97,22 @@ export async function POST(req: NextRequest) {
       ).error;
     }
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+
+    const receiverId = requestRow.requester_id === user.id ? requestRow.tutor_id : requestRow.requester_id;
+    if (receiverId) {
+      const notifyBody =
+        body.type === "file"
+          ? "ファイル付きメッセージが届きました。"
+          : `${String(body.content ?? "").slice(0, 80)}${String(body.content ?? "").length > 80 ? "…" : ""}`;
+      await createNotification(supabaseAdmin, {
+        userId: receiverId,
+        title: "新着メッセージ",
+        body: notifyBody || "新しいメッセージが届きました。",
+        href: `/chat?requestId=${requestId}`,
+        type: "message",
+        meta: { requestId, senderId: user.id }
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

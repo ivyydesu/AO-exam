@@ -130,10 +130,27 @@ function RequestNewPageContent() {
       return;
     }
 
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setError("ログイン情報の取得に失敗しました。再読み込みして再試行してください。");
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setError("ログインセッションが見つかりません。再ログインしてください。");
+      router.push("/auth/login");
+      return;
+    }
+
     setLoading(true);
     const response = await fetch("/api/requests/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
       body: JSON.stringify({
         requesterId: sessionUserId,
         tutorId,
