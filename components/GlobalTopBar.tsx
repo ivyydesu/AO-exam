@@ -16,6 +16,15 @@ type ProfileState = {
   isGuest: boolean;
 };
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  body: string;
+  href: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
 function BellIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
@@ -31,11 +40,32 @@ function navClass(active: boolean) {
     : "px-3 py-2 text-[15px] font-semibold text-[#374151] transition hover:text-[#10B981]";
 }
 
+function formatNotificationTime(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "たった今";
+  if (diffMin < 60) return `${diffMin}分前`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}時間前`;
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export default function GlobalTopBar() {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [profile, setProfile] = useState<ProfileState>({
     name: "ログインしてください",
     email: "",
@@ -75,7 +105,8 @@ export default function GlobalTopBar() {
       const fallbackName =
         (currentSession?.user.user_metadata?.full_name as string | undefined) ||
         (currentSession?.user.email?.split("@")[0] ?? "ユーザー");
-      const fallbackRole = (currentSession?.user.user_metadata?.role as "student" | "tutor" | "admin" | undefined) ?? "student";
+      const fallbackRole =
+        (currentSession?.user.user_metadata?.role as "student" | "tutor" | "admin" | undefined) ?? "student";
 
       const [{ data: baseProfile, error: baseError }, { data: tutorProfile }] = await Promise.all([
         supabase.from("profiles").select("full_name, role").eq("id", uid).maybeSingle(),
@@ -118,6 +149,33 @@ export default function GlobalTopBar() {
     };
   }, []);
 
+  useEffect(() => {
+    const loadNotifications = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase || profile.isGuest) {
+        setNotificationItems([]);
+        setUnreadCount(0);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+
+      const res = await fetch("/api/notifications/list?limit=10", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store"
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      const items = (json.items ?? []) as NotificationItem[];
+      setNotificationItems(items);
+      setUnreadCount(Number(json.unreadCount ?? 0));
+    };
+
+    void loadNotifications();
+  }, [pathname, profile.isGuest]);
+
   const links = useMemo(() => {
     if (profile.isGuest) {
       return [
@@ -145,15 +203,7 @@ export default function GlobalTopBar() {
   }, [pathname, profile.isGuest, profile.role]);
 
   useEffect(() => {
-    // Frequently-used routes are prefetched to make click-to-navigation faster.
-    const targets = [
-      "/home",
-      "/status",
-      "/chat",
-      "/notifications",
-      "/profile/settings?tab=manage",
-      "/profile/management"
-    ];
+    const targets = ["/home", "/status", "/chat", "/notifications", "/profile/settings?tab=manage", "/profile/management"];
     for (const href of targets) {
       router.prefetch(href);
     }
@@ -166,12 +216,6 @@ export default function GlobalTopBar() {
     }
     router.push("/auth/login");
   };
-
-  const notificationItems = [
-    { title: "新しい依頼が届きました", detail: "申請内容を確認してください", href: "/notifications" },
-    { title: "メッセージを受信しました", detail: "進行中のやり取りがあります", href: "/chat" },
-    { title: "申請状況が更新されました", detail: "最新ステータスを確認できます", href: "/status" }
-  ];
 
   if (pathname?.startsWith("/auth/")) {
     return null;
@@ -199,10 +243,13 @@ export default function GlobalTopBar() {
           >
             <Link
               href="/notifications"
-              className="grid h-12 w-12 place-items-center rounded-xl text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#10B981]"
+              className="relative grid h-12 w-12 place-items-center rounded-xl text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#10B981]"
               aria-label="通知"
             >
               <BellIcon />
+              {unreadCount > 0 ? (
+                <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#EF4444] ring-2 ring-white" />
+              ) : null}
             </Link>
 
             {notificationOpen ? (
@@ -212,16 +259,23 @@ export default function GlobalTopBar() {
                     <p className="text-sm font-semibold text-[#111827]">最新の通知</p>
                   </div>
                   <div className="space-y-1">
-                    {notificationItems.map((item) => (
+                    {notificationItems.slice(0, 3).map((item) => (
                       <Link
-                        key={item.title}
-                        href={item.href}
+                        key={item.id}
+                        href={item.href || "/notifications"}
                         className="block rounded-xl px-3 py-3 transition hover:bg-[#F9FAFB]"
                       >
-                        <p className="text-sm font-medium text-[#111827]">{item.title}</p>
-                        <p className="mt-1 text-xs text-[#6B7280]">{item.detail}</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-medium text-[#111827]">{item.title}</p>
+                          {!item.is_read ? <span className="mt-1 h-2 w-2 rounded-full bg-[#EF4444]" /> : null}
+                        </div>
+                        <p className="mt-1 line-clamp-1 text-xs text-[#6B7280]">{item.body}</p>
+                        <p className="mt-1 text-[11px] text-[#9CA3AF]">{formatNotificationTime(item.created_at)}</p>
                       </Link>
                     ))}
+                    {notificationItems.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-[#9CA3AF]">通知はまだありません。</p>
+                    ) : null}
                   </div>
                   <div className="px-2 pt-1">
                     <Link
@@ -267,13 +321,7 @@ export default function GlobalTopBar() {
                     アカウント設定
                   </Link>
                   <Link
-                    href={
-                      profile.isGuest
-                        ? "/auth/login"
-                        : profile.role === "admin"
-                          ? "/admin"
-                          : "/profile/management"
-                    }
+                    href={profile.isGuest ? "/auth/login" : profile.role === "admin" ? "/admin" : "/profile/management"}
                     className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
                   >
                     管理ページ
