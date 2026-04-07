@@ -5,6 +5,7 @@ import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 import { writeSecurityAudit } from "../../../../lib/security/audit";
 import { getRequestMeta } from "../../../../lib/security/requestMeta";
+import sharp from "sharp";
 
 function isMissingVerificationTable(message: string) {
   const lower = message.toLowerCase();
@@ -16,20 +17,19 @@ function isMissingVerificationTable(message: string) {
 
 async function ensureStudentIdsBucket() {
   const supabaseAdmin = getSupabaseAdmin();
-  const { data: buckets, error: listError } = await supabaseAdmin.storage.listBuckets();
-  if (listError) {
-    throw new Error(`Bucket list failed: ${listError.message}`);
-  }
-
-  const exists = (buckets ?? []).some((bucket) => bucket.id === "student-ids");
-  if (exists) return;
-
   const { error: createError } = await supabaseAdmin.storage.createBucket("student-ids", {
     public: false
   });
   if (createError && !createError.message.toLowerCase().includes("already")) {
     throw new Error(`Bucket create failed: ${createError.message}`);
   }
+}
+
+let ensuredStudentIdsBucket = false;
+async function ensureStudentIdsBucketOnce() {
+  if (ensuredStudentIdsBucket) return;
+  await ensureStudentIdsBucket();
+  ensuredStudentIdsBucket = true;
 }
 
 export async function GET(req: NextRequest) {
@@ -143,54 +143,64 @@ export async function POST(req: NextRequest) {
 
     const frontBytes = await frontFile.arrayBuffer();
     const backBytes = await backFile.arrayBuffer();
-    const frontBuffer = Buffer.from(frontBytes);
-    const backBuffer = Buffer.from(backBytes);
-    const frontExtension =
-      frontFile.type === "image/png"
-        ? "png"
-        : frontFile.type === "image/webp"
-          ? "webp"
-          : frontFile.type === "image/heic"
-            ? "heic"
-            : frontFile.type === "image/heif"
-              ? "heif"
-              : "jpg";
-    const backExtension =
-      backFile.type === "image/png"
-        ? "png"
-        : backFile.type === "image/webp"
-          ? "webp"
-          : backFile.type === "image/heic"
-            ? "heic"
-            : backFile.type === "image/heif"
-              ? "heif"
-              : "jpg";
+
+    async function normalizeUploadImage(
+      rawBuffer: Buffer,
+      mimeType: string
+    ): Promise<{ buffer: Buffer; contentType: string; extension: "jpg" | "png" | "webp" }> {
+      // HEIC/HEIF はブラウザ互換性の高い JPEG に統一
+      if (mimeType === "image/heic" || mimeType === "image/heif") {
+        const converted = await sharp(rawBuffer).jpeg({ quality: 85 }).toBuffer();
+        return { buffer: converted, contentType: "image/jpeg", extension: "jpg" };
+      }
+      if (mimeType === "image/png") {
+        return { buffer: rawBuffer, contentType: "image/png", extension: "png" };
+      }
+      if (mimeType === "image/webp") {
+        return { buffer: rawBuffer, contentType: "image/webp", extension: "webp" };
+      }
+      return { buffer: rawBuffer, contentType: "image/jpeg", extension: "jpg" };
+    }
+
+    const frontNormalized = await normalizeUploadImage(Buffer.from(frontBytes), frontFile.type);
+    const backNormalized = await normalizeUploadImage(Buffer.from(backBytes), backFile.type);
+    const frontBuffer = frontNormalized.buffer;
+    const backBuffer = backNormalized.buffer;
+    const frontExtension = frontNormalized.extension;
+    const backExtension = backNormalized.extension;
     const base = `${user.id}/${Date.now()}`;
     const frontPath = `${base}-student-id-front.${frontExtension}`;
     const backPath = `${base}-student-id-back.${backExtension}`;
 
-    await ensureStudentIdsBucket();
+    await ensureStudentIdsBucketOnce();
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("student-ids")
-      .upload(frontPath, frontBuffer, {
-        contentType: frontFile.type,
-        upsert: false
-      });
+    const [frontUpload, backUpload] = await Promise.all([
+      supabaseAdmin.storage
+        .from("student-ids")
+        .upload(frontPath, frontBuffer, {
+          contentType: frontNormalized.contentType,
+          upsert: false
+        }),
+      supabaseAdmin.storage
+        .from("student-ids")
+        .upload(backPath, backBuffer, {
+          contentType: backNormalized.contentType,
+          upsert: false
+        })
+    ]);
 
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 });
-    }
-
-    const { error: backUploadError } = await supabaseAdmin.storage
-      .from("student-ids")
-      .upload(backPath, backBuffer, {
-        contentType: backFile.type,
-        upsert: false
-      });
-
-    if (backUploadError) {
-      return NextResponse.json({ error: backUploadError.message }, { status: 400 });
+    if (frontUpload.error || backUpload.error) {
+      // 片方だけ成功した場合の孤児ファイルを削除
+      const removeTargets: string[] = [];
+      if (!frontUpload.error) removeTargets.push(frontPath);
+      if (!backUpload.error) removeTargets.push(backPath);
+      if (removeTargets.length > 0) {
+        await supabaseAdmin.storage.from("student-ids").remove(removeTargets);
+      }
+      return NextResponse.json(
+        { error: frontUpload.error?.message ?? backUpload.error?.message ?? "アップロードに失敗しました" },
+        { status: 400 }
+      );
     }
 
     const { error: upsertError } = await supabaseAdmin

@@ -91,27 +91,41 @@ export default function StudentIdVerificationPage() {
     }
 
     setLoading(true);
-    const formData = new FormData();
-    formData.append("studentIdImageFront", frontFile);
-    formData.append("studentIdImageBack", backFile);
-    formData.append("admissionYear", admissionYear);
-    formData.append("graduationYear", graduationYear);
+    try {
+      const formData = new FormData();
+      formData.append("studentIdImageFront", frontFile);
+      formData.append("studentIdImageBack", backFile);
+      formData.append("admissionYear", admissionYear);
+      formData.append("graduationYear", graduationYear);
 
-    const res = await fetch("/api/verification/student-id", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${sessionData.session.access_token}`
-      },
-      body: formData
-    });
-    const payload = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(payload.error ?? "申請に失敗しました");
-      return;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 30_000);
+      const res = await fetch("/api/verification/student-id", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`
+        },
+        body: formData,
+        signal: controller.signal
+      });
+      window.clearTimeout(timeoutId);
+
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(payload.error ?? "申請に失敗しました");
+        return;
+      }
+      setNotice("学生証を提出しました。審査完了までお待ちください。");
+      await loadStatus();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setError("アップロードがタイムアウトしました。通信環境を確認して再実行してください。");
+      } else {
+        setError("アップロードに失敗しました。時間を空けて再度お試しください。");
+      }
+    } finally {
+      setLoading(false);
     }
-    setNotice("学生証を提出しました。審査完了までお待ちください。");
-    await loadStatus();
   };
 
   return (
