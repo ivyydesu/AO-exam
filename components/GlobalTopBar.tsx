@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import BrandLogo from "./BrandLogo";
+import BrandLogo, { BrandIcon } from "./BrandLogo";
 import { getSupabaseClient } from "../lib/supabase/client";
 
 type ProfileState = {
@@ -110,7 +110,7 @@ export default function GlobalTopBar() {
 
       const [{ data: baseProfile, error: baseError }, { data: tutorProfile }] = await Promise.all([
         supabase.from("profiles").select("full_name, role").eq("id", uid).maybeSingle(),
-        supabase.from("tutor_profiles").select("avatar_url").eq("user_id", uid).maybeSingle()
+        supabase.from("tutor_profiles").select("avatar_url, nickname").eq("user_id", uid).maybeSingle()
       ]);
 
       if (baseError) {
@@ -126,7 +126,7 @@ export default function GlobalTopBar() {
       }
 
       setProfile({
-        name: baseProfile?.full_name || fallbackName,
+        name: (tutorProfile?.nickname ?? "").trim() || baseProfile?.full_name || fallbackName,
         email,
         roleLabel: baseProfile?.role === "tutor" ? "大学生" : baseProfile?.role === "admin" ? "運営" : "高校生",
         avatarUrl: tutorProfile?.avatar_url || "",
@@ -306,7 +306,9 @@ export default function GlobalTopBar() {
                 {profile.avatarUrl ? (
                   <img src={profile.avatarUrl} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="grid h-full w-full place-items-center text-sm font-semibold text-[#10B981]">AO</div>
+                  <div className="grid h-full w-full place-items-center">
+                    <BrandIcon size="sm" />
+                  </div>
                 )}
               </div>
             </button>

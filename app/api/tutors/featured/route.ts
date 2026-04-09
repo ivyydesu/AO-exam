@@ -17,7 +17,6 @@ type TutorProfileRow = {
 
 type ProfileRow = {
   id: string;
-  full_name: string;
   school: string | null;
   role: string;
 };
@@ -59,7 +58,7 @@ export async function GET() {
     const userIds = tutorRows.map((t) => t.user_id);
     const { data: profiles, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, school, role")
+      .select("id, school, role")
       .in("id", userIds);
 
     if (profileError) {
@@ -134,7 +133,7 @@ export async function GET() {
         const stat = reviewStats.get(row.user_id) ?? { rating: 5, reviews: 0 };
         return {
           id: row.user_id,
-          name: (row.nickname ?? "").trim() || profile.full_name,
+          name: (row.nickname ?? "").trim() || "先輩メンター",
           school: profile.school ?? "",
           avatar: row.avatar_url ?? "",
           university: row.university,

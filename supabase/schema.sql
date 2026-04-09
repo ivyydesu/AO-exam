@@ -265,7 +265,14 @@ alter table notification_settings enable row level security;
 
 -- Profiles policies
 create policy "profiles_select" on profiles
-  for select using (auth.uid() is not null);
+  for select using (
+    auth.uid() = id
+    or exists (
+      select 1
+      from profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
 
 create policy "profiles_insert" on profiles
   for insert with check (auth.uid() = id);

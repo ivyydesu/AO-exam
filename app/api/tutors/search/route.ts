@@ -91,16 +91,16 @@ export async function GET(req: NextRequest) {
     }
 
     const userIds = (tutors ?? []).map((t) => t.user_id);
-    let names: Record<string, { full_name: string; school: string | null }> = {};
+    let names: Record<string, { school: string | null }> = {};
     if (userIds.length > 0) {
       const { data: profiles } = await supabaseAdmin
         .from("profiles")
-        .select("id, full_name, school, role")
+        .select("id, school, role")
         .in("id", userIds);
       names = Object.fromEntries(
         (profiles ?? [])
           .filter((p) => p.role === "tutor")
-          .map((p) => [p.id, { full_name: p.full_name, school: p.school }])
+          .map((p) => [p.id, { school: p.school }])
       );
     }
 
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       .filter((t) => Boolean(names[t.user_id]))
       .map((t) => ({
         id: t.user_id,
-        name: (t.nickname ?? "").trim() || names[t.user_id].full_name,
+        name: (t.nickname ?? "").trim() || "先輩メンター",
         school: names[t.user_id].school ?? "",
         avatar: t.avatar_url ?? "",
         university: t.university,

@@ -639,7 +639,16 @@ export default function ProfileSettingsPage() {
                 <hr className="mb-8 border-[#E5E7EB]" />
 
                 <div className="grid grid-cols-1 gap-x-8 gap-y-6 md:grid-cols-2">
-                  <ProfileInput label="氏名" value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} />
+                  <label className="space-y-2">
+                    <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">氏名</span>
+                    <input
+                      className="w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
+                      value={form.full_name}
+                      onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                      placeholder="本名を入力"
+                    />
+                    <p className="-mt-1 pl-1 text-xs text-[#6B7280]">※ 本名は運営のみ確認できます（一般ユーザーには表示されません）</p>
+                  </label>
                   <label className="space-y-2">
                     <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">ニックネーム</span>
                     <input

@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, school, role")
+      .select("id, school, role")
       .eq("id", tutorId)
       .maybeSingle();
     if (!profile || profile.role !== "tutor") {
@@ -86,7 +86,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({
       item: {
         id: tutorId,
-        name: (tutor.nickname ?? "").trim() || profile.full_name,
+        name: (tutor.nickname ?? "").trim() || "先輩メンター",
         school: profile.school ?? "",
         avatar: tutor.avatar_url ?? "",
         university: tutor.university ?? "",

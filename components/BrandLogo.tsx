@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 type Size = "sm" | "md";
 
@@ -10,13 +11,17 @@ function iconClass(size: Size) {
 }
 
 export function BrandIcon({ size = "md" }: { size?: Size }) {
+  const dim = size === "sm" ? 32 : 40;
   return (
-    <div
-      className={`flex items-center justify-center bg-gradient-to-br from-[#10b981] to-teal-400 font-bold text-white shadow-lg shadow-[#10b981]/30 ${iconClass(
-        size
-      )}`}
-    >
-      AO
+    <div className={`relative overflow-hidden bg-white shadow-lg shadow-[#10b981]/20 ${iconClass(size)}`}>
+      <Image
+        src="/brand/unibridge-icon.png"
+        alt="UniBridge icon"
+        fill
+        sizes={`${dim}px`}
+        className="object-cover"
+        priority={size === "sm"}
+      />
     </div>
   );
 }
@@ -31,9 +36,9 @@ export default function BrandLogo({
   textClassName?: string;
 }) {
   return (
-    <Link href={href} className="flex items-center gap-3">
+    <Link href={href} className="flex shrink-0 items-center gap-3 whitespace-nowrap">
       <BrandIcon size={size} />
-      <span className={textClassName}>ユニブリ</span>
+      <span className={`inline-block shrink-0 whitespace-nowrap break-keep [word-break:keep-all] [text-orientation:mixed] [writing-mode:horizontal-tb] ${textClassName}`}>ユニブリ</span>
     </Link>
   );
 }
