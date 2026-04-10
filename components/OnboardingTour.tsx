@@ -18,7 +18,6 @@ type TourStepDef = {
   align?: "start" | "center" | "end";
 };
 
-const TOUR_DONE_KEY_PREFIX = "unibridgeTourDone:";
 const TOUR_PROGRESS_KEY_PREFIX = "uniBridgeTourProgress:";
 
 const TOUR_STEPS: TourStepDef[] = [
@@ -171,24 +170,8 @@ export default function OnboardingTour() {
     localStorage.setItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`, String(idx));
   };
 
-  const markDone = async (userId: string) => {
-    localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${userId}`, "true");
+  const resetProgress = (userId: string) => {
     localStorage.removeItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`);
-
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (!token) return;
-
-    await fetch("/api/onboarding/status", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ completed: true })
-    }).catch(() => undefined);
   };
 
   const cleanupDriver = () => {
@@ -205,9 +188,9 @@ export default function OnboardingTour() {
   const handleSkip = async () => {
     if (!uid) return;
     cleanupDriver();
-    await markDone(uid);
+    resetProgress(uid);
     setRunning(false);
-    setCurrentIndex(TOUR_STEPS.length);
+    setCurrentIndex(0);
   };
 
   useEffect(() => {
@@ -243,30 +226,8 @@ export default function OnboardingTour() {
         return;
       }
 
-      const localDone = localStorage.getItem(`${TOUR_DONE_KEY_PREFIX}${user.id}`) === "true";
-      if (localDone) {
-        setUid(null);
-        setRunning(false);
-        return;
-      }
-
-      const token = data.session?.access_token;
-      if (token) {
-        const res = await fetch("/api/onboarding/status", {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store"
-        }).catch(() => null);
-        const payload = await res?.json().catch(() => ({}));
-        if (payload?.completed) {
-          localStorage.setItem(`${TOUR_DONE_KEY_PREFIX}${user.id}`, "true");
-          setUid(null);
-          setRunning(false);
-          return;
-        }
-      }
-
       setUid(user.id);
-      setCurrentIndex(getProgress(user.id));
+      setCurrentIndex(0);
     };
 
     void boot();
@@ -279,7 +240,7 @@ export default function OnboardingTour() {
   useEffect(() => {
     if (!uid || role !== "tutor") return;
     if (currentIndex >= TOUR_STEPS.length) {
-      void markDone(uid);
+      resetProgress(uid);
       setRunning(false);
       return;
     }
@@ -319,7 +280,7 @@ export default function OnboardingTour() {
         setRunning(false);
 
         if (nextIndex >= TOUR_STEPS.length) {
-          await markDone(uid);
+          resetProgress(uid);
           return;
         }
 

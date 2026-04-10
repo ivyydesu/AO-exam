@@ -223,9 +223,9 @@ export default function GlobalTopBar() {
 
   return (
     <header className="app-topbar relative z-40 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
-      <div className="mx-auto flex h-20 w-full max-w-[1220px] items-center justify-between gap-6 px-6">
-        <div className="flex min-w-0 items-center gap-10">
-          <BrandLogo href="/home" size="sm" textClassName="text-[17px] font-bold tracking-tight text-[#111827]" />
+      <div className="mx-auto flex h-20 w-full max-w-[1220px] items-center justify-between gap-3 px-3 sm:gap-6 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-10">
+          <BrandLogo href="/home" size="sm" textClassName="text-[15px] font-bold tracking-tight text-[#111827] sm:text-[17px]" />
           <nav className="hidden items-center gap-3 md:flex">
             {links.map((link) => (
               <Link key={link.href} href={link.href} className={navClass(link.active)}>
@@ -235,7 +235,7 @@ export default function GlobalTopBar() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <div
             className="relative"
             onMouseEnter={() => setNotificationOpen(true)}
@@ -243,7 +243,7 @@ export default function GlobalTopBar() {
           >
             <Link
               href="/notifications"
-              className="relative grid h-12 w-12 place-items-center rounded-xl text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#10B981]"
+              className="relative grid h-10 w-10 place-items-center rounded-xl text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#10B981] sm:h-12 sm:w-12"
               aria-label="通知"
             >
               <BellIcon />
@@ -297,12 +297,12 @@ export default function GlobalTopBar() {
             onMouseEnter={() => setMenuOpen(true)}
             onMouseLeave={() => setMenuOpen(false)}
           >
-            <button type="button" className="flex min-h-[56px] min-w-[172px] items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-[#F9FAFB]">
-              <div className="text-right leading-tight">
+            <button type="button" className="flex min-h-[52px] items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-[#F9FAFB] sm:min-h-[56px] sm:min-w-[172px] sm:gap-3 sm:px-3">
+              <div className="hidden text-right leading-tight sm:block">
                 <div className="text-[12px] font-semibold text-[#6B7280]">{profile.roleLabel}</div>
                 <div className="text-[15px] font-semibold text-[#374151]">{profile.name}</div>
               </div>
-              <div className="h-10 w-10 overflow-hidden rounded-full border border-[#E5E7EB] bg-[#F3F4F6]">
+              <div className="h-9 w-9 overflow-hidden rounded-full border border-[#E5E7EB] bg-[#F3F4F6] sm:h-10 sm:w-10">
                 {profile.avatarUrl ? (
                   <img src={profile.avatarUrl} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
