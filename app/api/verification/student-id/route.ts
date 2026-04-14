@@ -32,6 +32,16 @@ async function ensureStudentIdsBucketOnce() {
   ensuredStudentIdsBucket = true;
 }
 
+function isLikelyAuthError(message: string) {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("unauthorized") ||
+    lower.includes("bearer") ||
+    lower.includes("access token") ||
+    lower.includes("jwt")
+  );
+}
+
 export async function GET(req: NextRequest) {
   try {
     const user = await requireUserFromBearerToken(req);
@@ -147,11 +157,20 @@ export async function POST(req: NextRequest) {
     async function normalizeUploadImage(
       rawBuffer: Buffer,
       mimeType: string
-    ): Promise<{ buffer: Buffer; contentType: string; extension: "jpg" | "png" | "webp" }> {
-      // HEIC/HEIF はブラウザ互換性の高い JPEG に統一
+    ): Promise<{ buffer: Buffer; contentType: string; extension: "jpg" | "png" | "webp" | "heic" | "heif" }> {
+      // HEIC/HEIF は可能なら JPEG に変換。
+      // サーバー環境の sharp/libvips が HEIF 未対応の場合は元ファイルをそのまま保存して処理継続。
       if (mimeType === "image/heic" || mimeType === "image/heif") {
-        const converted = await sharp(rawBuffer).jpeg({ quality: 85 }).toBuffer();
-        return { buffer: converted, contentType: "image/jpeg", extension: "jpg" };
+        try {
+          const converted = await sharp(rawBuffer).jpeg({ quality: 85 }).toBuffer();
+          return { buffer: converted, contentType: "image/jpeg", extension: "jpg" };
+        } catch {
+          return {
+            buffer: rawBuffer,
+            contentType: mimeType,
+            extension: mimeType === "image/heif" ? "heif" : "heic"
+          };
+        }
       }
       if (mimeType === "image/png") {
         return { buffer: rawBuffer, contentType: "image/png", extension: "png" };
@@ -248,10 +267,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, status: "pending" });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json(
-      { error: message },
-      { status: message.includes("CSRF blocked") ? 403 : 401 }
-    );
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    const status = message.includes("CSRF blocked")
+      ? 403
+      : isLikelyAuthError(message)
+        ? 401
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
