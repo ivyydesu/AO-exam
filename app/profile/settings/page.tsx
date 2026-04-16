@@ -16,6 +16,7 @@ import {
 } from "../../../lib/auth/emailThrottle";
 
 type TabKey = "manage" | "profile" | "notifications" | "login";
+type UserRole = "student" | "tutor" | "admin";
 
 type TutorForm = {
   full_name: string;
@@ -59,7 +60,7 @@ export default function ProfileSettingsPage() {
   const [tab, setTab] = useState<TabKey>("profile");
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
-  const [userRole, setUserRole] = useState<"student" | "tutor" | "admin">("student");
+  const [userRole, setUserRole] = useState<UserRole>("student");
 
   const [form, setForm] = useState<TutorForm>(initialForm);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -108,6 +109,39 @@ export default function ProfileSettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const normalizeRole = (raw: unknown): UserRole => {
+    const normalized = String(raw ?? "").trim();
+    const role = normalized.toLowerCase();
+
+    const adminRoles = new Set(["admin", "administrator", "運営", "管理者"]);
+    if (adminRoles.has(role) || adminRoles.has(normalized)) return "admin";
+
+    const tutorRoles = new Set([
+      "tutor",
+      "mentor",
+      "university",
+      "university_student",
+      "college_student",
+      "大学生",
+      "先輩"
+    ]);
+    if (tutorRoles.has(role) || tutorRoles.has(normalized)) return "tutor";
+
+    const studentRoles = new Set(["student", "highschool", "high_school", "高校生"]);
+    if (studentRoles.has(role) || studentRoles.has(normalized)) return "student";
+
+    // Unknown role values should not accidentally downgrade university users.
+    if (role.includes("tutor") || role.includes("mentor") || role.includes("university") || normalized.includes("大学")) {
+      return "tutor";
+    }
+    if (role.includes("admin") || normalized.includes("運営") || normalized.includes("管理")) {
+      return "admin";
+    }
+    return "student";
+  };
+
+  const hasExplicitRole = (raw: unknown) => String(raw ?? "").trim().length > 0;
+
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("tab");
     if (raw === "manage" || raw === "profile" || raw === "notifications" || raw === "login") {
@@ -130,10 +164,18 @@ export default function ProfileSettingsPage() {
           return;
         }
         setEmail(sessionData.session.user.email ?? "");
+        const sessionRoleRaw =
+          sessionData.session.user.user_metadata?.role ?? sessionData.session.user.app_metadata?.role;
+        if (hasExplicitRole(sessionRoleRaw)) {
+          setUserRole(normalizeRole(sessionRoleRaw));
+        }
 
         const token = sessionData.session.access_token;
         const [profileRes, settingsRes, verificationRes] = await Promise.all([
-          fetch("/api/profile/tutor", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/profile/tutor", {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store"
+          }),
           fetch("/api/profile/notification-settings", { headers: { Authorization: `Bearer ${token}` } }),
           fetch("/api/verification/student-id", { headers: { Authorization: `Bearer ${token}` } })
         ]);
@@ -141,7 +183,26 @@ export default function ProfileSettingsPage() {
         const profilePayload = await profileRes.json().catch(() => ({}));
         if (profileRes.ok && profilePayload.profile) {
           setForm((prev) => ({ ...prev, ...(profilePayload.profile as TutorForm) }));
-          setUserRole((profilePayload.profile.role as "student" | "tutor" | "admin") ?? "student");
+          if (hasExplicitRole(profilePayload.profile.role)) {
+            setUserRole(normalizeRole(profilePayload.profile.role));
+          }
+        } else {
+          const { data: fallbackProfile } = await supabase
+            .from("profiles")
+            .select("full_name, school, role")
+            .eq("id", sessionData.session.user.id)
+            .maybeSingle();
+
+          if (fallbackProfile) {
+            setForm((prev) => ({
+              ...prev,
+              full_name: fallbackProfile.full_name ?? prev.full_name,
+              school: fallbackProfile.school ?? prev.school
+            }));
+            if (hasExplicitRole(fallbackProfile.role)) {
+              setUserRole(normalizeRole(fallbackProfile.role));
+            }
+          }
         }
 
         const settingsPayload = await settingsRes.json().catch(() => ({}));
@@ -212,13 +273,13 @@ export default function ProfileSettingsPage() {
       fd.append("full_name", form.full_name);
       fd.append("nickname", form.nickname);
       fd.append("school", form.school);
+      fd.append("university", form.school);
       fd.append("department", form.department);
       fd.append("seminar", form.seminar);
       fd.append("grade", form.grade);
       fd.append("research_theme", form.research_theme);
       fd.append("coaching_experience", form.coaching_experience);
       fd.append("bio", form.bio);
-      fd.append("is_published", String(form.is_published));
       if (avatarFile) fd.append("avatar", avatarFile);
       if (coverFile) fd.append("cover", coverFile);
 
@@ -232,8 +293,11 @@ export default function ProfileSettingsPage() {
 
       setForm((prev) => ({
         ...prev,
+        ...(payload?.profile ?? {}),
         avatar_url: payload?.profile?.avatar_url ? `${payload.profile.avatar_url}?t=${Date.now()}` : prev.avatar_url,
-        cover_url: payload?.profile?.cover_url ? `${payload.profile.cover_url}?t=${Date.now()}` : prev.cover_url
+        cover_url: payload?.profile?.cover_url ? `${payload.profile.cover_url}?t=${Date.now()}` : prev.cover_url,
+        // 公開/非公開は専用トグルAPIのみで更新する
+        is_published: prev.is_published
       }));
 
       setAvatarFile(null);
@@ -275,25 +339,36 @@ export default function ProfileSettingsPage() {
   };
 
   const onTogglePublish = async () => {
+    if (loadingPublish) return;
     setLoadingPublish(true);
     setError(null);
     setNotice(null);
     try {
       const token = await authToken();
-      const next = !form.is_published;
-      const res = await fetch("/api/profile/tutor/publish", {
+      const requestedPublish = !form.is_published;
+      const publishRes = await fetch("/api/profile/tutor/publish", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ isPublished: next })
+        body: JSON.stringify({ isPublished: requestedPublish })
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error ?? "公開設定の更新に失敗しました");
+      const publishPayload = await publishRes.json().catch(() => ({}));
+      if (!publishRes.ok) throw new Error(publishPayload.error ?? "公開設定の更新に失敗しました");
 
-      setForm((prev) => ({ ...prev, is_published: next }));
-      setNotice(next ? "プロフィールを公開しました" : "プロフィールを非公開にしました");
+      const profileRes = await fetch("/api/profile/tutor", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store"
+      });
+      const profilePayload = await profileRes.json().catch(() => ({}));
+      if (!profileRes.ok || !profilePayload?.profile) {
+        throw new Error(profilePayload.error ?? "公開設定の最新状態を取得できませんでした");
+      }
+
+      const confirmedPublished = profilePayload.profile.is_published === true;
+      setForm((prev) => ({ ...prev, is_published: confirmedPublished }));
+      setNotice(confirmedPublished ? "プロフィールを公開しました" : "プロフィールを非公開にしました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "公開設定の更新に失敗しました");
     } finally {
@@ -491,17 +566,28 @@ export default function ProfileSettingsPage() {
               </div>
                 <div className="divide-y divide-[#E5E7EB]">
                 <ManageListRow
+                  rowId="manage-profile-settings-row"
                   title="プロフィール設定"
-                  desc={userRole === "tutor" ? "公開プロフィール、写真、基本情報を編集します。" : "氏名や学校名などの基本情報を編集します。"}
+                  desc={userRole === "student" ? "氏名や学校名などの基本情報を編集します。" : "公開プロフィール、写真、基本情報を編集します。"}
                   onClick={() => setTabAndQuery("profile")}
                 />
-                {userRole === "tutor" ? (
+                {userRole !== "student" ? (
                   <>
-                    <ManageListRow title="学生証認証" desc="学生証の表裏と入学/卒業予定年度を提出します。" onClick={() => router.push("/verification/student-id")} />
+                    <ManageListRow
+                      rowId="manage-student-verification-row"
+                      title="学生証認証"
+                      desc="学生証の表裏と入学/卒業予定年度を提出します。"
+                      onClick={() => router.push("/verification/student-id")}
+                    />
                     <ManageListRow title="口座登録" desc="Stripe Connect の振込先口座を設定します。" onClick={() => router.push("/profile/payouts")} />
                   </>
                 ) : null}
-                <ManageListRow title="通知設定" desc="メール通知、LINE通知、通知の受け取り方を管理します。" onClick={() => setTabAndQuery("notifications")} />
+                <ManageListRow
+                  rowId="manage-notifications-row"
+                  title="通知設定"
+                  desc="メール通知、LINE通知、通知の受け取り方を管理します。"
+                  onClick={() => setTabAndQuery("notifications")}
+                />
                 <ManageListRow title="ログイン設定" desc="メールアドレス変更、パスワード変更を管理します。" onClick={() => setTabAndQuery("login")} />
               </div>
             </div>
@@ -510,7 +596,7 @@ export default function ProfileSettingsPage() {
         )}
 
         {tab === "profile" && (
-          userRole !== "tutor" ? (
+          userRole === "student" ? (
             <div className="mx-auto w-full max-w-[820px] px-4 pb-20 pt-8 sm:px-6 lg:px-8">
               <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-sm">
                 <h2 className="text-2xl font-bold text-[#111827]">基本プロフィール設定</h2>
@@ -518,12 +604,14 @@ export default function ProfileSettingsPage() {
 
                 <form className="mt-6 space-y-5" onSubmit={onSaveBasicProfile}>
                   <ProfileInput
+                    inputId="student-full-name-input"
                     label="氏名"
                     value={form.full_name}
                     onChange={(v) => setForm((p) => ({ ...p, full_name: v }))}
                     placeholder="山田 太郎"
                   />
                   <ProfileInput
+                    inputId="student-school-input"
                     label="学校名"
                     value={form.school}
                     onChange={(v) => setForm((p) => ({ ...p, school: v }))}
@@ -592,7 +680,7 @@ export default function ProfileSettingsPage() {
 
                   <div className="flex-1 pt-2 text-center md:pt-12 md:text-left">
                     <h2 className="flex flex-wrap items-center justify-center gap-2 text-4xl font-bold leading-none text-[#111827] md:justify-start lg:text-5xl">
-                      {form.full_name || "kotaro"}
+                      {form.nickname?.trim() || form.full_name || "先輩メンター"}
                       {verification.status === "approved" ? (
                         <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                           学生証認証済み
@@ -642,6 +730,7 @@ export default function ProfileSettingsPage() {
                   <label className="space-y-2">
                     <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">氏名</span>
                     <input
+                      id="tutor-full-name-input"
                       className="w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
                       value={form.full_name}
                       onChange={(e) => setForm({ ...form, full_name: e.target.value })}
@@ -652,6 +741,7 @@ export default function ProfileSettingsPage() {
                   <label className="space-y-2">
                     <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">ニックネーム</span>
                     <input
+                      id="tutor-nickname-input"
                       className="w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
                       value={form.nickname}
                       onChange={(e) => setForm({ ...form, nickname: e.target.value })}
@@ -659,7 +749,7 @@ export default function ProfileSettingsPage() {
                     />
                     <p className="-mt-1 pl-1 text-xs text-[#6B7280]">※ 実際に他のユーザーに表示される名前です</p>
                   </label>
-                  <ProfileInput label="学校名" value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
+                  <ProfileInput inputId="tutor-school-input" label="学校名" value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
                   <ProfileInput label="学部学科" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
                   <ProfileInput label="ゼミ" value={form.seminar} onChange={(v) => setForm({ ...form, seminar: v })} />
 
@@ -686,6 +776,7 @@ export default function ProfileSettingsPage() {
                   <label id="interest-tags" className="space-y-2 md:col-span-2">
                     <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">探究テーマ</span>
                     <textarea
+                      id="tutor-research-theme-input"
                       className="w-full resize-none rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[#111827] outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
                       rows={3}
                       placeholder="あなたの探究テーマについて詳しく教えてください"
@@ -1092,16 +1183,19 @@ function MailIcon() {
 }
 
 function ManageListRow({
+  rowId,
   title,
   desc,
   onClick
 }: {
+  rowId?: string;
   title: string;
   desc: string;
   onClick: () => void;
 }) {
   return (
     <button
+      id={rowId}
       type="button"
       onClick={onClick}
       className="flex w-full items-center justify-between gap-4 px-8 py-6 text-left transition hover:bg-[#F9FAFB]"
@@ -1116,6 +1210,7 @@ function ManageListRow({
 }
 
 function ProfileInput({
+  inputId,
   label,
   value,
   onChange,
@@ -1123,6 +1218,7 @@ function ProfileInput({
   type,
   readOnly
 }: {
+  inputId?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -1134,6 +1230,7 @@ function ProfileInput({
     <label className="space-y-2">
       <span className="block pl-1 text-xs font-semibold uppercase tracking-wider text-[#6B7280]">{label}</span>
       <input
+        id={inputId}
         type={type ?? "text"}
         value={value}
         readOnly={readOnly}

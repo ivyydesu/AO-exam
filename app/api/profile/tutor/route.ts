@@ -4,8 +4,69 @@ import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
 import { sanitizePlainText } from "../../../../lib/security/input";
 import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const OPTIONAL_TUTOR_COLUMNS = ["is_published", "is_public", "cover_url", "nickname"] as const;
+
+type TutorProfileRow = {
+  nickname?: string;
+  avatar_url?: string | null;
+  cover_url?: string | null;
+  university?: string;
+  department?: string;
+  seminar?: string;
+  grade?: string;
+  research_theme?: string;
+  coaching_experience?: string;
+  bio?: string;
+  is_published?: boolean;
+  is_public?: boolean;
+};
+
+const TUTOR_SELECT_BASE = "nickname, avatar_url, cover_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published, is_public";
+
+function isMissingColumnError(message: string, column: string) {
+  return message.includes(`column "${column}"`) || message.includes(`column ${column}`) || message.includes(`'${column}'`);
+}
+
+function buildTutorSelect(excluded: Set<string>) {
+  return TUTOR_SELECT_BASE.split(",")
+    .map((part) => part.trim())
+    .filter((column) => !excluded.has(column))
+    .join(", ");
+}
+
+async function fetchTutorProfileRow(userId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+  const excluded = new Set<string>();
+  let lastError: string | null = null;
+
+  for (let i = 0; i < OPTIONAL_TUTOR_COLUMNS.length + 2; i += 1) {
+    const select = buildTutorSelect(excluded);
+    const { data, error } = await supabaseAdmin
+      .from("tutor_profiles")
+      .select(select)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!error) {
+      return { data: (data as TutorProfileRow | null) ?? null, missingColumns: excluded };
+    }
+
+    lastError = error.message;
+    const missing = OPTIONAL_TUTOR_COLUMNS.find((column) => !excluded.has(column) && isMissingColumnError(error.message, column));
+    if (missing) {
+      excluded.add(missing);
+      continue;
+    }
+    break;
+  }
+
+  throw new Error(lastError ?? "tutor profile fetch failed");
+}
 
 async function ensureAvatarBucket() {
   const supabaseAdmin = getSupabaseAdmin();
@@ -30,57 +91,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    let tutor: {
-      nickname?: string;
-      avatar_url?: string | null;
-      cover_url?: string | null;
-      university?: string;
-      department?: string;
-      seminar?: string;
-      grade?: string;
-      research_theme?: string;
-      coaching_experience?: string;
-      bio?: string;
-      is_published?: boolean;
-    } | null = null;
+    const tutorResult = await fetchTutorProfileRow(user.id);
+    const tutor = tutorResult.data;
 
-    const withPublish = await supabaseAdmin
-      .from("tutor_profiles")
-      .select("nickname, avatar_url, cover_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!withPublish.error) {
-      tutor = withPublish.data;
-    } else {
-      const fallback = await supabaseAdmin
-        .from("tutor_profiles")
-        .select("avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (fallback.error) {
-        return NextResponse.json({ error: fallback.error.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        profile: {
+          full_name: profile.full_name ?? "",
+          nickname: tutor?.nickname ?? "",
+          role: profile.role,
+          school: profile.school ?? "",
+          avatar_url: tutor?.avatar_url ?? "",
+          cover_url: tutor?.cover_url ?? "",
+          university: tutor?.university ?? "",
+          department: tutor?.department ?? "",
+          seminar: tutor?.seminar ?? "",
+          grade: tutor?.grade ?? "",
+          research_theme: tutor?.research_theme ?? "",
+          coaching_experience: tutor?.coaching_experience ?? "",
+          bio: tutor?.bio ?? "",
+          is_published: tutor?.is_published ?? tutor?.is_public ?? false
+        }
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0"
+        }
       }
-      tutor = fallback.data ? { ...fallback.data, nickname: "" } : null;
-    }
-
-    return NextResponse.json({
-      profile: {
-        full_name: profile.full_name ?? "",
-        nickname: tutor?.nickname ?? "",
-        role: profile.role,
-        school: profile.school ?? "",
-        avatar_url: tutor?.avatar_url ?? "",
-        cover_url: tutor?.cover_url ?? "",
-        university: tutor?.university ?? "",
-        department: tutor?.department ?? "",
-        seminar: tutor?.seminar ?? "",
-        grade: tutor?.grade ?? "",
-        research_theme: tutor?.research_theme ?? "",
-        coaching_experience: tutor?.coaching_experience ?? "",
-        bio: tutor?.bio ?? "",
-        is_published: tutor?.is_published ?? false
-      }
-    });
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
     return NextResponse.json({ error: message }, { status: 401 });
@@ -99,7 +137,8 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!roleRow || roleRow.role !== "tutor") {
+    const mentorRoles = new Set(["tutor", "university"]);
+    if (!roleRow || !mentorRoles.has(String(roleRow.role))) {
       return NextResponse.json({ error: "Only tutor can edit tutor profile" }, { status: 403 });
     }
 
@@ -107,7 +146,8 @@ export async function POST(req: NextRequest) {
     const fullName = sanitizePlainText(String(form.get("full_name") ?? ""), 80);
     const nickname = sanitizePlainText(String(form.get("nickname") ?? ""), 40);
     const school = sanitizePlainText(String(form.get("school") ?? ""), 120);
-    const university = sanitizePlainText(String(form.get("university") ?? ""), 120);
+    const universityInput = sanitizePlainText(String(form.get("university") ?? ""), 120);
+    const university = universityInput || school;
     const department = sanitizePlainText(String(form.get("department") ?? ""), 120);
     const seminar = sanitizePlainText(String(form.get("seminar") ?? ""), 120);
     const grade = sanitizePlainText(String(form.get("grade") ?? ""), 20);
@@ -116,6 +156,7 @@ export async function POST(req: NextRequest) {
     const bio = sanitizePlainText(String(form.get("bio") ?? ""), 1200);
     const avatarFile = form.get("avatar");
     const coverFile = form.get("cover");
+    const isPublishedRaw = form.get("is_published");
 
     let avatarUrl: string | null = null;
     let coverUrl: string | null = null;
@@ -179,47 +220,59 @@ export async function POST(req: NextRequest) {
       research_theme: researchTheme,
       coaching_experience: coachingExperience,
       bio,
-      is_published: form.get("is_published") === "true",
       updated_at: new Date().toISOString()
     };
+    if (isPublishedRaw !== null) {
+      payload.is_published = isPublishedRaw === "true";
+    }
+    const resolvedIsPublished = isPublishedRaw !== null ? isPublishedRaw === "true" : undefined;
     if (avatarUrl) payload.avatar_url = avatarUrl;
     if (coverUrl) payload.cover_url = coverUrl;
 
-    let { error: tutorError } = await supabaseAdmin
-      .from("tutor_profiles")
-      .upsert(payload, { onConflict: "user_id" });
+    let payloadForUpsert = { ...payload };
+    let tutorError: { message: string } | null = null;
 
-    if (tutorError) {
-      const fallbackPayload = { ...payload };
-      delete fallbackPayload.is_published;
-      delete fallbackPayload.cover_url;
-      delete fallbackPayload.nickname;
-      const fallback = await supabaseAdmin
+    for (let i = 0; i < OPTIONAL_TUTOR_COLUMNS.length + 2; i += 1) {
+      const result = await supabaseAdmin
         .from("tutor_profiles")
-        .upsert(fallbackPayload, { onConflict: "user_id" });
-      tutorError = fallback.error;
+        .upsert(payloadForUpsert, { onConflict: "user_id" });
+      if (!result.error) {
+        tutorError = null;
+        break;
+      }
+
+      tutorError = result.error;
+      const missing = OPTIONAL_TUTOR_COLUMNS.find((column) => column in payloadForUpsert && isMissingColumnError(result.error.message, column));
+      if (missing) {
+        delete payloadForUpsert[missing];
+        continue;
+      }
+      break;
     }
 
     if (tutorError) {
       return NextResponse.json({ error: tutorError.message }, { status: 400 });
     }
 
+    const tutorResult = await fetchTutorProfileRow(user.id);
+    const latestProfile = tutorResult.data;
+
     return NextResponse.json({
       ok: true,
       profile: {
         full_name: fullName,
-        nickname,
+        nickname: latestProfile?.nickname ?? nickname,
         school,
-        university,
-        department,
-        seminar,
-        grade,
-        research_theme: researchTheme,
-        coaching_experience: coachingExperience,
-        bio,
-        is_published: form.get("is_published") === "true",
-        avatar_url: avatarUrl,
-        cover_url: coverUrl
+        university: latestProfile?.university ?? university,
+        department: latestProfile?.department ?? department,
+        seminar: latestProfile?.seminar ?? seminar,
+        grade: latestProfile?.grade ?? grade,
+        research_theme: latestProfile?.research_theme ?? researchTheme,
+        coaching_experience: latestProfile?.coaching_experience ?? coachingExperience,
+        bio: latestProfile?.bio ?? bio,
+        is_published: latestProfile?.is_published ?? resolvedIsPublished ?? false,
+        avatar_url: latestProfile?.avatar_url ?? avatarUrl,
+        cover_url: latestProfile?.cover_url ?? coverUrl
       }
     });
   } catch (error) {

@@ -21,16 +21,37 @@ type Mentor = {
 
 type FeaturedTutorApiItem = {
   id: string;
-  name: string;
+  name?: string;
+  nickname?: string | null;
+  full_name?: string | null;
   school?: string;
   avatar?: string;
-  university: string;
-  department: string;
-  seminar: string;
-  grade: string;
-  researchTheme: string;
-  coachingExperience: string;
-  bio: string;
+  university?: string;
+  department?: string;
+  seminar?: string;
+  grade?: string;
+  researchTheme?: string;
+  coachingExperience?: string;
+  bio?: string;
+  tutor_profiles?: {
+    avatar_url?: string | null;
+    university?: string | null;
+    department?: string | null;
+    seminar?: string | null;
+    grade?: string | null;
+    research_theme?: string | null;
+    coaching_experience?: string | null;
+    bio?: string | null;
+  } | Array<{
+    avatar_url?: string | null;
+    university?: string | null;
+    department?: string | null;
+    seminar?: string | null;
+    grade?: string | null;
+    research_theme?: string | null;
+    coaching_experience?: string | null;
+    bio?: string | null;
+  }> | null;
   verified?: boolean;
   rating?: number;
   reviews?: number;
@@ -75,10 +96,16 @@ const beginnerSteps = [
   }
 ];
 
-function toTags(item: FeaturedTutorApiItem) {
-  const parts = [item.department, item.seminar, ...(item.researchTheme || "").split(/[、,。\n]/)].map((v) => v.trim()).filter(Boolean);
+function toTags(department: string, seminar: string, researchTheme: string) {
+  const parts = [department, seminar, ...researchTheme.split(/[、,。\n]/)].map((v) => v.trim()).filter(Boolean);
   const unique = Array.from(new Set(parts)).slice(0, 4);
   return unique.map((v) => (v.startsWith("#") ? v : `#${v}`));
+}
+
+function pickTutorProfile(value: FeaturedTutorApiItem["tutor_profiles"]) {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
 }
 
 export default function HomePage() {
@@ -103,20 +130,33 @@ export default function HomePage() {
         if (!res.ok) {
           throw new Error(payload?.error ?? "先輩一覧の取得に失敗しました");
         }
-        const items = ((payload?.items ?? []) as FeaturedTutorApiItem[]).map((item) => ({
-          id: item.id,
-          name: item.name,
-          university: item.university || "未設定",
-          department: item.department || "未設定",
-          grade: item.grade || "未設定",
-          seminar: item.seminar || "未設定",
-          theme: item.researchTheme || "未設定",
-          tags: toTags(item),
-          rating: Number(item.rating ?? 5),
-          verified: Boolean(item.verified),
-          experience: item.coachingExperience || "未設定",
-          avatar: item.avatar || fallbackAvatar
-        }));
+        const items = ((payload?.items ?? []) as FeaturedTutorApiItem[]).map((item) => {
+          const tutorProfile = pickTutorProfile(item.tutor_profiles);
+          const nickname = (item.nickname ?? "").trim();
+          const fullName = (item.full_name ?? "").trim();
+          const fallbackName = (item.name ?? "").trim();
+          const universityRaw = (tutorProfile?.university || item.university || item.school || "").trim();
+          const departmentRaw = (tutorProfile?.department || item.department || "").trim();
+          const gradeRaw = (tutorProfile?.grade || item.grade || "").trim();
+          const seminarRaw = (tutorProfile?.seminar || item.seminar || "").trim();
+          const researchThemeRaw = (tutorProfile?.research_theme || item.researchTheme || "").trim();
+          const coachingExperienceRaw = (tutorProfile?.coaching_experience || item.coachingExperience || "").trim();
+          const avatarRaw = (item.avatar || tutorProfile?.avatar_url || "").trim();
+          return {
+            id: item.id,
+            name: nickname || fullName || fallbackName || "先輩メンター",
+            university: universityRaw || "未設定",
+            department: departmentRaw || "未設定",
+            grade: gradeRaw || "未設定",
+            seminar: seminarRaw || "未設定",
+            theme: researchThemeRaw || "未設定",
+            tags: toTags(departmentRaw, seminarRaw, researchThemeRaw),
+            rating: Number(item.rating ?? 5),
+            verified: Boolean(item.verified),
+            experience: coachingExperienceRaw || "未設定",
+            avatar: avatarRaw || fallbackAvatar
+          };
+        });
         setMentors(items);
       } catch (error) {
         setMentorError(error instanceof Error ? error.message : "先輩一覧の取得に失敗しました");

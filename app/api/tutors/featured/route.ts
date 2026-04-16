@@ -2,23 +2,25 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 
 type TutorProfileRow = {
-  user_id: string;
+  user_id: string | null;
   nickname?: string | null;
   avatar_url: string | null;
-  university: string;
-  department: string;
-  seminar: string;
-  grade: string;
-  research_theme: string;
-  coaching_experience: string;
-  bio: string;
-  is_published: boolean;
+  university: string | null;
+  department: string | null;
+  seminar: string | null;
+  grade: string | null;
+  research_theme: string | null;
+  coaching_experience: string | null;
+  bio: string | null;
+  is_published: boolean | null;
 };
 
 type ProfileRow = {
   id: string;
+  full_name: string | null;
   school: string | null;
   role: string;
+  tutor_profiles: TutorProfileRow | TutorProfileRow[] | null;
 };
 
 function shuffle<T>(list: T[]) {
@@ -30,56 +32,44 @@ function shuffle<T>(list: T[]) {
   return copied;
 }
 
+function pickTutorProfile(value: ProfileRow["tutor_profiles"]): TutorProfileRow | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
+
 export async function GET() {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const { data: tutorProfiles, error: tutorError } = await supabaseAdmin
-      .from("tutor_profiles")
-      .select("user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
-      .eq("is_published", true)
-      .limit(200);
-
-    let tutorRows = (tutorProfiles ?? []) as TutorProfileRow[];
-    if (tutorError) {
-      const fallback = await supabaseAdmin
-        .from("tutor_profiles")
-        .select("user_id, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
-        .eq("is_published", true)
-        .limit(200);
-      if (fallback.error) {
-        return NextResponse.json({ error: fallback.error.message }, { status: 400 });
-      }
-      tutorRows = (fallback.data ?? []) as TutorProfileRow[];
-    }
-    if (tutorRows.length === 0) {
-      return NextResponse.json({ items: [] });
-    }
-
-    const userIds = tutorRows.map((t) => t.user_id);
     const { data: profiles, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, school, role")
-      .in("id", userIds);
+      .select(
+        "id, full_name, school, role, tutor_profiles(user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published)"
+      )
+      .eq("role", "tutor")
+      .limit(200);
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 400 });
     }
 
-    const profileMap = Object.fromEntries(
-      ((profiles ?? []) as ProfileRow[])
-        .filter((p) => p.role === "tutor")
-        .map((p) => [p.id, p])
-    );
-
-    const visibleTutors = tutorRows.filter((row) => Boolean(profileMap[row.user_id]));
+    const visibleTutors = ((profiles ?? []) as ProfileRow[])
+      .map((profile) => {
+        const tutor = pickTutorProfile(profile.tutor_profiles);
+        const tutorId = (tutor?.user_id ?? profile.id) ?? profile.id;
+        return { profile, tutor, tutorId };
+      })
+      .filter((row) => Boolean(row.tutor) && row.tutor?.is_published === true);
     if (visibleTutors.length === 0) {
       return NextResponse.json({ items: [] });
     }
 
+    const tutorIds = Array.from(new Set(visibleTutors.map((row) => row.tutorId)));
+
     const { data: verifications } = await supabaseAdmin
       .from("tutor_verifications")
       .select("user_id, status")
-      .in("user_id", visibleTutors.map((t) => t.user_id));
+      .in("user_id", tutorIds);
     const verifiedSet = new Set(
       (verifications ?? [])
         .filter((v) => v.status === "approved")
@@ -89,7 +79,7 @@ export async function GET() {
     const { data: requests } = await supabaseAdmin
       .from("requests")
       .select("id, tutor_id")
-      .in("tutor_id", visibleTutors.map((t) => t.user_id));
+      .in("tutor_id", tutorIds);
     const requestIdsByTutor = new Map<string, string[]>();
     (requests ?? []).forEach((row) => {
       const bucket = requestIdsByTutor.get(row.tutor_id) ?? [];
@@ -112,14 +102,14 @@ export async function GET() {
         ratingByRequest.set(r.request_id, bucket);
       });
 
-      visibleTutors.forEach((tutor) => {
-        const ids = requestIdsByTutor.get(tutor.user_id) ?? [];
+      visibleTutors.forEach(({ tutorId }) => {
+        const ids = requestIdsByTutor.get(tutorId) ?? [];
         const scores = ids.flatMap((id) => ratingByRequest.get(id) ?? []);
         if (scores.length === 0) {
-          reviewStats.set(tutor.user_id, { rating: 5, reviews: 0 });
+          reviewStats.set(tutorId, { rating: 5, reviews: 0 });
         } else {
           const total = scores.reduce((sum, score) => sum + score, 0);
-          reviewStats.set(tutor.user_id, {
+          reviewStats.set(tutorId, {
             rating: Number((total / scores.length).toFixed(1)),
             reviews: scores.length
           });
@@ -128,22 +118,41 @@ export async function GET() {
     }
 
     const items = shuffle(
-      visibleTutors.map((row) => {
-        const profile = profileMap[row.user_id];
-        const stat = reviewStats.get(row.user_id) ?? { rating: 5, reviews: 0 };
+      visibleTutors.map(({ profile, tutor, tutorId }) => {
+        const stat = reviewStats.get(tutorId) ?? { rating: 5, reviews: 0 };
+        const nickname = (tutor?.nickname ?? "").trim();
+        const fullName = (profile.full_name ?? "").trim();
+        const university = tutor?.university ?? "";
+        const department = tutor?.department ?? "";
+        const seminar = tutor?.seminar ?? "";
+        const grade = tutor?.grade ?? "";
+        const researchTheme = tutor?.research_theme ?? "";
+        const coachingExperience = tutor?.coaching_experience ?? "";
+        const bio = tutor?.bio ?? "";
         return {
-          id: row.user_id,
-          name: (row.nickname ?? "").trim() || "先輩メンター",
+          id: tutorId,
+          name: nickname || fullName || "先輩メンター",
+          nickname,
+          full_name: fullName,
           school: profile.school ?? "",
-          avatar: row.avatar_url ?? "",
-          university: row.university,
-          department: row.department,
-          seminar: row.seminar,
-          grade: row.grade,
-          researchTheme: row.research_theme,
-          coachingExperience: row.coaching_experience,
-          bio: row.bio,
-          verified: verifiedSet.has(row.user_id),
+          avatar: tutor?.avatar_url ?? "",
+          tutor_profiles: {
+            university,
+            department,
+            seminar,
+            grade,
+            research_theme: researchTheme,
+            coaching_experience: coachingExperience,
+            bio
+          },
+          university,
+          department,
+          seminar,
+          grade,
+          researchTheme,
+          coachingExperience,
+          bio,
+          verified: verifiedSet.has(tutorId),
           rating: stat.rating,
           reviews: stat.reviews
         };
