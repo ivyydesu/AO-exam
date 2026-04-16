@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import GlobalTopBar from "./GlobalTopBar";
 import AccountSuspensionOverlay from "./AccountSuspensionOverlay";
 import OnboardingTour from "./OnboardingTour";
@@ -13,7 +14,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       {!isAuthPage ? <GlobalTopBar /> : null}
-      {!isAuthPage ? <OnboardingTour /> : null}
+      {!isAuthPage ? (
+        <Suspense fallback={null}>
+          <OnboardingTour />
+        </Suspense>
+      ) : null}
       <main
         data-app-shell="true"
         className={
