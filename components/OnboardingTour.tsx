@@ -24,6 +24,7 @@ type TourStepDef = {
 
 const TOUR_PROGRESS_KEY_PREFIX = "uniBridgeTourProgress:v2:";
 const TOUR_DONE_SENTINEL = -1;
+const TOUR_SEEN_KEY_PREFIX = "has_seen_tour_";
 
 const TUTOR_TOUR_STEPS: TourStepDef[] = [
   {
@@ -280,6 +281,11 @@ function parseProgress(raw: string | null, stepCount: number) {
   return Math.min(stepCount - 1, Math.floor(value));
 }
 
+function hasSeenTour(userId: string) {
+  const raw = localStorage.getItem(`${TOUR_SEEN_KEY_PREFIX}${userId}`);
+  return raw === "1" || raw === "true";
+}
+
 function stepHref(step: TourStepDef) {
   if (step.path !== "/profile/settings") return step.path;
   const tab = step.tab ?? "manage";
@@ -331,6 +337,9 @@ export default function OnboardingTour() {
   };
 
   const completeTour = () => {
+    if (uid) {
+      localStorage.setItem(`${TOUR_SEEN_KEY_PREFIX}${uid}`, "true");
+    }
     if (!progressKey) return;
     localStorage.setItem(progressKey, String(TOUR_DONE_SENTINEL));
     cleanupDriver();
@@ -385,7 +394,9 @@ export default function OnboardingTour() {
 
       const steps = resolvedRole === "tutor" ? TUTOR_TOUR_STEPS : STUDENT_TOUR_STEPS;
       const key = `${TOUR_PROGRESS_KEY_PREFIX}${user.id}:${resolvedRole}`;
-      const saved = parseProgress(localStorage.getItem(key), steps.length);
+      const saved = hasSeenTour(user.id)
+        ? TOUR_DONE_SENTINEL
+        : parseProgress(localStorage.getItem(key), steps.length);
 
       setUid(user.id);
       setRole(resolvedRole);

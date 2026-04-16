@@ -276,6 +276,9 @@ export default function OnboardingChecklist() {
   if (hiddenOn || role === "admin" || role === null) return null;
   if (!hydrated || !position) return null;
 
+  const allItemsCompleted = !loading && items.length > 0 && items.every((item) => item.completed);
+  if (allItemsCompleted) return null;
+
   const doneCount = items.filter((item) => item.completed).length;
 
   return (
