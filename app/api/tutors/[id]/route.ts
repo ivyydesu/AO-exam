@@ -12,13 +12,13 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
     }
     let requesterId: string | null = null;
-    let requesterRole: "student" | "tutor" | "admin" | null = null;
+    let requesterRole: "student" | "tutor" | "university" | "admin" | null = null;
 
     try {
       const authed = await requireUserFromBearerToken(_req);
       requesterId = authed.id;
       const { data: me } = await supabaseAdmin.from("profiles").select("role").eq("id", authed.id).maybeSingle();
-      requesterRole = (me?.role as "student" | "tutor" | "admin" | null) ?? null;
+      requesterRole = (me?.role as "student" | "tutor" | "university" | "admin" | null) ?? null;
     } catch {
       requesterId = null;
       requesterRole = null;
@@ -26,10 +26,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("id, school, role")
+      .select("id, full_name, school, role")
       .eq("id", tutorId)
       .maybeSingle();
-    if (!profile || profile.role !== "tutor") {
+    const mentorRoles = new Set(["tutor", "university"]);
+    if (!profile || !mentorRoles.has(String(profile.role))) {
       return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
     }
 
@@ -86,10 +87,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({
       item: {
         id: tutorId,
-        name: (tutor.nickname ?? "").trim() || "先輩メンター",
+        name: (tutor.nickname ?? "").trim() || (profile.full_name ?? "").trim() || "先輩メンター",
         school: profile.school ?? "",
         avatar: tutor.avatar_url ?? "",
-        university: tutor.university ?? "",
+        university: (tutor.university?.trim() || profile.school) ?? "",
         department: tutor.department ?? "",
         seminar: tutor.seminar ?? "",
         grade: tutor.grade ?? "",

@@ -13,11 +13,39 @@ import {
   startCooldown
 } from "../../../lib/auth/emailThrottle";
 
+type CanonicalRole = "student" | "tutor" | "admin";
+
+function normalizeRole(raw: unknown): CanonicalRole | null {
+  const normalized = String(raw ?? "").trim();
+  if (!normalized) return null;
+  const lower = normalized.toLowerCase();
+
+  const tutorRoles = new Set(["tutor", "mentor", "university", "university_student", "college_student", "大学生", "先輩"]);
+  if (tutorRoles.has(lower) || tutorRoles.has(normalized) || lower.includes("tutor") || lower.includes("mentor") || lower.includes("university") || normalized.includes("大学")) {
+    return "tutor";
+  }
+
+  const studentRoles = new Set(["student", "highschool", "high_school", "高校生"]);
+  if (studentRoles.has(lower) || studentRoles.has(normalized) || lower.includes("student") || normalized.includes("高校")) {
+    return "student";
+  }
+
+  const adminRoles = new Set(["admin", "administrator", "運営", "管理者"]);
+  if (adminRoles.has(lower) || adminRoles.has(normalized) || lower.includes("admin") || normalized.includes("運営") || normalized.includes("管理")) {
+    return "admin";
+  }
+
+  return null;
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const emailParam = searchParams.get("email") ?? "";
-  const [roleHint, setRoleHint] = useState<"student" | "tutor">("student");
+  const [roleHint, setRoleHint] = useState<"student" | "tutor">(() => {
+    const hintedRole = normalizeRole(searchParams.get("role"));
+    return hintedRole === "tutor" ? "tutor" : "student";
+  });
   const [email, setEmail] = useState(emailParam);
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
@@ -36,6 +64,8 @@ function LoginPageContent() {
     const registered = searchParams.get("registered");
     const verified = searchParams.get("verified");
     const autoLoggedOut = searchParams.get("autoLoggedOut");
+    const hintedRole = normalizeRole(searchParams.get("role"));
+    setRoleHint(hintedRole === "tutor" ? "tutor" : "student");
     if (registered === "1") setNotice("登録完了。メール認証後にログインしてください。");
     if (verified === "1") setNotice("メール認証が完了しました。ログインできます。");
     if (autoLoggedOut === "1") setNotice("30分以上操作がなかったため、安全のため自動ログアウトしました。");
@@ -80,10 +110,7 @@ function LoginPageContent() {
 
     if (profileError) throw profileError;
 
-    const normalizedRegisteredRole =
-      registeredRole === "student" || registeredRole === "tutor" || registeredRole === "admin"
-        ? (registeredRole as "student" | "tutor" | "admin")
-        : null;
+    const normalizedRegisteredRole = normalizeRole(registeredRole);
 
     if (!profile) {
       const createRole =
@@ -100,10 +127,20 @@ function LoginPageContent() {
       if (insertError) throw new Error(`プロフィール初期化に失敗しました: ${insertError.message}`);
       return createRole;
     }
-    if (profile.role === "admin" && !isAllowedAdminEmail(userEmail)) {
-      return "student";
+
+    const normalizedProfileRole = normalizeRole(profile.role);
+    let resolvedRole: CanonicalRole = normalizedProfileRole ?? normalizedRegisteredRole ?? roleHint;
+    if (resolvedRole === "admin" && !isAllowedAdminEmail(userEmail)) {
+      resolvedRole = "student";
     }
-    return (profile.role as "student" | "tutor" | "admin") ?? "student";
+
+    const currentProfileRole = String(profile.role ?? "").trim();
+    if (currentProfileRole !== resolvedRole) {
+      const { error: updateError } = await supabase.from("profiles").update({ role: resolvedRole }).eq("id", userId);
+      if (updateError) throw new Error(`プロフィール権限の同期に失敗しました: ${updateError.message}`);
+    }
+
+    return resolvedRole;
   };
 
   const signInPassword = async (event: React.FormEvent) => {
@@ -123,6 +160,17 @@ function LoginPageContent() {
         throw new Error("メール認証が未完了です。先にメール内リンクを開いてください。");
       }
       const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
+      const normalizedMetaRole = normalizeRole(data.user.user_metadata?.role);
+      if (normalizedMetaRole !== resolvedRole) {
+        await supabase.auth
+          .updateUser({
+            data: {
+              ...(data.user.user_metadata ?? {}),
+              role: resolvedRole
+            }
+          })
+          .catch(() => undefined);
+      }
       setRoleHint(resolvedRole === "admin" ? "student" : resolvedRole);
 
       if (resolvedRole !== "admin") {

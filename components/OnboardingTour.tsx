@@ -3,14 +3,18 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseClient } from "../lib/supabase/client";
+import { normalizeUserRole } from "../lib/userRole";
+
+type TourRole = "student" | "tutor";
+type TourTab = "manage" | "profile" | "notifications";
 
 type TourStepDef = {
   id: string;
-  path: "/profile/settings";
-  tab: "profile" | "notifications";
+  path: "/home" | "/profile/settings";
+  tab?: TourTab;
   selector?: string;
   title: string;
   description: string;
@@ -18,17 +22,86 @@ type TourStepDef = {
   align?: "start" | "center" | "end";
 };
 
-const TOUR_PROGRESS_KEY_PREFIX = "uniBridgeTourProgress:";
+const TOUR_PROGRESS_KEY_PREFIX = "uniBridgeTourProgress:v2:";
+const TOUR_DONE_SENTINEL = -1;
 
-const TOUR_STEPS: TourStepDef[] = [
+const TUTOR_TOUR_STEPS: TourStepDef[] = [
   {
-    id: "profile-form",
+    id: "welcome",
+    path: "/home",
+    selector: "#welcome-card",
+    title: "ようこそ、ユニブリへ",
+    description: "公開まで最短で進めるようにご案内します。まずはアカウント設定へ進みましょう。",
+    side: "bottom",
+    align: "center"
+  },
+  {
+    id: "account-settings",
+    path: "/home",
+    selector: "#topbar-profile-menu-button",
+    title: "① アカウント設定を開く",
+    description: "このメニューから「アカウント設定」に進めます。まずは設定画面を開きましょう。",
+    side: "bottom",
+    align: "end"
+  },
+  {
+    id: "profile-menu",
+    path: "/profile/settings",
+    tab: "manage",
+    selector: "#manage-profile-settings-row",
+    title: "② プロフィール設定へ",
+    description: "次にプロフィール設定を開いて、公開に必要な情報を入力します。",
+    side: "left",
+    align: "start"
+  },
+  {
+    id: "tutor-full-name",
     path: "/profile/settings",
     tab: "profile",
-    selector: "#profile-form-container",
-    title: "① プロフィール設定のやり方",
-    description: "まずはプロフィールを入力しましょう。氏名・ニックネーム（表示名）・学校名・学部学科など、基本情報を埋めると信頼されやすくなります。",
+    selector: "#tutor-full-name-input",
+    title: "氏名",
+    description: "運営確認用の氏名です。正確な情報を入力してください。",
     side: "bottom",
+    align: "start"
+  },
+  {
+    id: "tutor-nickname",
+    path: "/profile/settings",
+    tab: "profile",
+    selector: "#tutor-nickname-input",
+    title: "ニックネーム",
+    description: "高校生に公開される表示名です。呼ばれたい名前を設定しましょう。",
+    side: "bottom",
+    align: "start"
+  },
+  {
+    id: "tutor-school",
+    path: "/profile/settings",
+    tab: "profile",
+    selector: "#tutor-school-input",
+    title: "学校名",
+    description: "在籍校を入力します。信頼性の高いプロフィール作成に重要です。",
+    side: "bottom",
+    align: "start"
+  },
+  {
+    id: "tutor-research-theme",
+    path: "/profile/settings",
+    tab: "profile",
+    selector: "#tutor-research-theme-input",
+    title: "探究テーマ",
+    description: "高校生が相談内容をイメージできるよう、扱っているテーマを具体的に書きましょう。",
+    side: "top",
+    align: "start"
+  },
+  {
+    id: "notifications-menu",
+    path: "/profile/settings",
+    tab: "manage",
+    selector: "#manage-notifications-row",
+    title: "③ 通知設定へ",
+    description: "次は通知設定です。相談対応の見逃しを防ぐため、LINE連携を推奨します。",
+    side: "left",
     align: "start"
   },
   {
@@ -36,30 +109,90 @@ const TOUR_STEPS: TourStepDef[] = [
     path: "/profile/settings",
     tab: "notifications",
     selector: "#line-connect-button",
-    title: "② LINE連携のやり方",
-    description: "次にLINEを連携しましょう。通知をLINEで受け取れるようになるので、依頼の見逃しを防げます。",
+    title: "LINE連携を推奨",
+    description: "新規相談を見逃さないために、ここでLINE連携を済ませておくのがおすすめです。",
     side: "top",
     align: "start"
   },
   {
-    id: "student-verification",
+    id: "verification-menu",
     path: "/profile/settings",
-    tab: "profile",
-    selector: "#student-verification-link",
-    title: "③ 学生証認証のやり方",
-    description: "学生証認証ページから、学生証の表裏と入学/卒業予定年度を提出してください。承認後に公開範囲を広げられます。",
-    side: "top",
+    tab: "manage",
+    selector: "#manage-student-verification-row",
+    title: "④ 学生証認証へ",
+    description: "最後に学生証認証を提出しましょう。提出後は審査待ちになります。",
+    side: "left",
     align: "start"
   },
   {
-    id: "tour-complete",
+    id: "complete",
     path: "/profile/settings",
-    tab: "profile",
-    selector: "#save-profile-button",
-    title: "④ これで完璧です！",
-    description: "最後に「保存する」を押して設定を反映すれば準備完了です。高校生からの相談を待ちましょう！",
-    side: "top",
+    tab: "manage",
+    selector: "#profile-tab",
+    title: "完了です！",
+    description: "審査が終わればプロフィールが公開できます！",
+    side: "bottom",
+    align: "start"
+  }
+];
+
+const STUDENT_TOUR_STEPS: TourStepDef[] = [
+  {
+    id: "welcome",
+    path: "/home",
+    selector: "#welcome-card",
+    title: "ようこそ、ユニブリへ",
+    description: "最初にアカウント設定を済ませると、先輩探しがスムーズに進みます。",
+    side: "bottom",
     align: "center"
+  },
+  {
+    id: "account-settings",
+    path: "/home",
+    selector: "#topbar-profile-menu-button",
+    title: "① アカウント設定へ",
+    description: "このメニューからアカウント設定を開けます。",
+    side: "bottom",
+    align: "end"
+  },
+  {
+    id: "profile-menu",
+    path: "/profile/settings",
+    tab: "manage",
+    selector: "#manage-profile-settings-row",
+    title: "② プロフィール設定へ",
+    description: "プロフィール設定を開いて、高校名と名前を登録しましょう。",
+    side: "left",
+    align: "start"
+  },
+  {
+    id: "student-name",
+    path: "/profile/settings",
+    tab: "profile",
+    selector: "#student-full-name-input",
+    title: "名前を入力",
+    description: "本名を入力してください。相談時の本人確認に使われます。",
+    side: "bottom",
+    align: "start"
+  },
+  {
+    id: "student-school",
+    path: "/profile/settings",
+    tab: "profile",
+    selector: "#student-school-input",
+    title: "高校名を入力",
+    description: "在籍高校を入力すると、先輩とのマッチング精度が上がります。",
+    side: "bottom",
+    align: "start"
+  },
+  {
+    id: "search-highlight",
+    path: "/home",
+    selector: "#home-ai-search-input",
+    title: "③ 先輩検索機能を使う",
+    description: "ここから探究テーマで先輩を検索できます。気になる先輩に相談を申し込みましょう。",
+    side: "bottom",
+    align: "start"
   }
 ];
 
@@ -127,17 +260,11 @@ function injectTourStyles() {
   document.head.appendChild(style);
 }
 
-function getQueryParam(name: string) {
-  if (typeof window === "undefined") return "";
-  const params = new URLSearchParams(window.location.search);
-  return params.get(name) ?? "";
-}
-
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForElement(selector: string, timeoutMs = 7000) {
+async function waitForElement(selector: string, timeoutMs = 8000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (document.querySelector(selector)) return true;
@@ -146,33 +273,46 @@ async function waitForElement(selector: string, timeoutMs = 7000) {
   return Boolean(document.querySelector(selector));
 }
 
+function parseProgress(raw: string | null, stepCount: number) {
+  const value = Number(raw);
+  if (value === TOUR_DONE_SENTINEL) return TOUR_DONE_SENTINEL;
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.min(stepCount - 1, Math.floor(value));
+}
+
+function stepHref(step: TourStepDef) {
+  if (step.path !== "/profile/settings") return step.path;
+  const tab = step.tab ?? "manage";
+  return `/profile/settings?tab=${tab}`;
+}
+
 export default function OnboardingTour() {
   const pathname = usePathname() || "";
+  const searchParams = useSearchParams();
   const router = useRouter();
 
   const [uid, setUid] = useState<string | null>(null);
-  const [role, setRole] = useState<"student" | "tutor" | "admin" | null>(null);
+  const [role, setRole] = useState<TourRole | null>(null);
+  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
 
   const driverRef = useRef<Driver | null>(null);
   const internalDestroyRef = useRef(false);
+  const startGuardRef = useRef<string | null>(null);
 
   const currentPath = normalizePath(pathname);
+  const currentTab = searchParams.get("tab") ?? "";
 
-  const getProgress = (userId: string) => {
-    const raw = localStorage.getItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`);
-    const n = raw ? Number(raw) : 0;
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  };
+  const tourSteps = useMemo(() => {
+    if (role === "tutor") return TUTOR_TOUR_STEPS;
+    if (role === "student") return STUDENT_TOUR_STEPS;
+    return [] as TourStepDef[];
+  }, [role]);
 
-  const saveProgress = (userId: string, idx: number) => {
-    localStorage.setItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`, String(idx));
-  };
-
-  const resetProgress = (userId: string) => {
-    localStorage.removeItem(`${TOUR_PROGRESS_KEY_PREFIX}${userId}`);
-  };
+  const progressKey = useMemo(() => {
+    if (!uid || !role) return null;
+    return `${TOUR_PROGRESS_KEY_PREFIX}${uid}:${role}`;
+  }, [uid, role]);
 
   const cleanupDriver = () => {
     if (!driverRef.current) return;
@@ -185,12 +325,22 @@ export default function OnboardingTour() {
     driverRef.current = null;
   };
 
-  const handleSkip = async () => {
-    if (!uid) return;
+  const saveProgress = (idx: number) => {
+    if (!progressKey) return;
+    localStorage.setItem(progressKey, String(idx));
+  };
+
+  const completeTour = () => {
+    if (!progressKey) return;
+    localStorage.setItem(progressKey, String(TOUR_DONE_SENTINEL));
     cleanupDriver();
-    resetProgress(uid);
     setRunning(false);
-    setCurrentIndex(0);
+    setCurrentIndex(TOUR_DONE_SENTINEL);
+    startGuardRef.current = null;
+  };
+
+  const handleSkip = async () => {
+    completeTour();
   };
 
   useEffect(() => {
@@ -198,9 +348,9 @@ export default function OnboardingTour() {
 
     const boot = async () => {
       injectTourStyles();
-
       const supabase = getSupabaseClient();
       if (!supabase) return;
+
       const { data } = await supabase.auth.getSession();
       const user = data.session?.user;
 
@@ -208,6 +358,7 @@ export default function OnboardingTour() {
       if (!user?.id) {
         setUid(null);
         setRole(null);
+        setCurrentIndex(null);
         setRunning(false);
         return;
       }
@@ -217,84 +368,104 @@ export default function OnboardingTour() {
         .select("role")
         .eq("id", user.id)
         .maybeSingle();
-      const resolvedRole = (me?.role as "student" | "tutor" | "admin" | null) ?? null;
-      setRole(resolvedRole);
-      // オンボーディングは大学生（tutor）だけ実行する
-      if (resolvedRole !== "tutor") {
+
+      if (!mounted) return;
+
+      const resolvedRole = normalizeUserRole(
+        me?.role ?? user.user_metadata?.role ?? user.app_metadata?.role,
+        "student"
+      );
+      if (resolvedRole !== "tutor" && resolvedRole !== "student") {
         setUid(null);
+        setRole(null);
+        setCurrentIndex(null);
         setRunning(false);
         return;
       }
 
+      const steps = resolvedRole === "tutor" ? TUTOR_TOUR_STEPS : STUDENT_TOUR_STEPS;
+      const key = `${TOUR_PROGRESS_KEY_PREFIX}${user.id}:${resolvedRole}`;
+      const saved = parseProgress(localStorage.getItem(key), steps.length);
+
       setUid(user.id);
-      setCurrentIndex(0);
+      setRole(resolvedRole);
+      setCurrentIndex(saved);
+      setRunning(false);
+      startGuardRef.current = null;
     };
 
     void boot();
-
     return () => {
       mounted = false;
     };
   }, [pathname]);
 
   useEffect(() => {
-    if (!uid || role !== "tutor") return;
-    if (currentIndex >= TOUR_STEPS.length) {
-      resetProgress(uid);
-      setRunning(false);
+    if (!uid || !role || currentIndex === null || currentIndex === TOUR_DONE_SENTINEL) return;
+    if (currentIndex >= tourSteps.length) {
+      completeTour();
       return;
     }
 
+    const step = tourSteps[currentIndex];
+    const guardKey = `${uid}:${role}:${currentIndex}:${currentPath}:${currentTab}`;
+    if (startGuardRef.current === guardKey) return;
+    startGuardRef.current = guardKey;
+
     let cancelled = false;
 
-    const startStep = async () => {
-      const step = TOUR_STEPS[currentIndex];
+    const moveTo = async (nextIndex: number) => {
+      cleanupDriver();
+      setRunning(false);
 
-      // 別ページへ強制遷移させず、対象ページに来た時だけ開始する
-      if (step.path !== currentPath) {
-        setRunning(false);
+      if (nextIndex < 0) {
+        saveProgress(0);
+        startGuardRef.current = null;
+        setCurrentIndex(0);
+        return;
+      }
+      if (nextIndex >= tourSteps.length) {
+        completeTour();
         return;
       }
 
-      if (step.path === "/profile/settings") {
-        const tab = getQueryParam("tab");
-        if (tab !== step.tab) {
-          setRunning(false);
-          return;
-        }
+      saveProgress(nextIndex);
+      startGuardRef.current = null;
+      setCurrentIndex(nextIndex);
+
+      const nextStep = tourSteps[nextIndex];
+      const href = stepHref(nextStep);
+      const shouldMovePath = nextStep.path !== currentPath;
+      const shouldMoveTab =
+        nextStep.path === "/profile/settings" &&
+        (nextStep.tab ?? "manage") !== currentTab;
+
+      if (shouldMovePath || shouldMoveTab) {
+        router.push(href);
+      }
+    };
+
+    const startStep = async () => {
+      const expectedHref = stepHref(step);
+      const pathMismatch = step.path !== currentPath;
+      const tabMismatch =
+        step.path === "/profile/settings" &&
+        (step.tab ?? "manage") !== currentTab;
+
+      if (pathMismatch || tabMismatch) {
+        setRunning(false);
+        router.push(expectedHref);
+        return;
       }
 
       if (step.selector) {
-        const ok = await waitForElement(step.selector, 7000);
-        if (!ok && !cancelled) {
-          const next = currentIndex + 1;
-          saveProgress(uid, next);
-          setCurrentIndex(next);
+        const exists = await waitForElement(step.selector, 8000);
+        if (!exists && !cancelled) {
+          await moveTo(currentIndex + 1);
           return;
         }
       }
       if (cancelled) return;
-
-      const moveTo = async (nextIndex: number) => {
-        cleanupDriver();
-        setRunning(false);
-
-        if (nextIndex >= TOUR_STEPS.length) {
-          resetProgress(uid);
-          return;
-        }
-
-        saveProgress(uid, nextIndex);
-        setCurrentIndex(nextIndex);
-
-        const nextStep = TOUR_STEPS[nextIndex];
-        if (nextStep.path !== currentPath || getQueryParam("tab") !== nextStep.tab) {
-          // 設定ページ内タブ遷移のみ許可（ページ外へ戻す挙動はしない）
-          if (currentPath === "/profile/settings") {
-            router.push(`/profile/settings?tab=${nextStep.tab}`);
-          }
-        }
-      };
 
       const oneStep: DriveStep = {
         element: step.selector ?? "body",
@@ -307,7 +478,7 @@ export default function OnboardingTour() {
             void moveTo(currentIndex + 1);
           },
           onPrevClick: () => {
-            void moveTo(Math.max(0, currentIndex - 1));
+            void moveTo(currentIndex - 1);
           },
           onCloseClick: () => {
             if (window.confirm("チュートリアルをスキップしますか？")) {
@@ -353,8 +524,9 @@ export default function OnboardingTour() {
       cancelled = true;
       cleanupDriver();
       setRunning(false);
+      startGuardRef.current = null;
     };
-  }, [uid, role, currentPath, currentIndex, router]);
+  }, [uid, role, currentIndex, currentPath, currentTab, router, tourSteps]);
 
   return (
     <AnimatePresence>

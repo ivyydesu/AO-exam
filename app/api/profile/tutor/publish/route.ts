@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
 import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
 
+const PUBLISH_COLUMNS = ["is_published", "is_public"] as const;
+
+function isMissingColumnError(message: string, column: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes(`column "${column}"`) ||
+    normalized.includes(`column ${column}`) ||
+    normalized.includes(`'${column}'`)
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUserFromBearerToken(req);
@@ -14,7 +25,8 @@ export async function POST(req: NextRequest) {
       .select("role")
       .eq("id", user.id)
       .single();
-    if (!roleRow || roleRow.role !== "tutor") {
+    const mentorRoles = new Set(["tutor", "university"]);
+    if (!roleRow || !mentorRoles.has(String(roleRow.role))) {
       return NextResponse.json({ error: "Only tutor can publish profile" }, { status: 403 });
     }
 
@@ -33,28 +45,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let { error } = await supabaseAdmin
-      .from("tutor_profiles")
-      .upsert(
-        {
-          user_id: user.id,
-          is_published: publish,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: "user_id" }
-      );
+    let persistedColumn: (typeof PUBLISH_COLUMNS)[number] | null = null;
+    let upsertError: string | null = null;
 
-    if (error && error.message.toLowerCase().includes("is_published")) {
-      return NextResponse.json(
-        { error: "DB列 is_published が未作成です。supabase/schema.sql を実行してください。" },
-        { status: 400 }
-      );
+    for (const column of PUBLISH_COLUMNS) {
+      const payload: Record<string, unknown> = {
+        user_id: user.id,
+        updated_at: new Date().toISOString()
+      };
+      payload[column] = publish;
+
+      const { error } = await supabaseAdmin
+        .from("tutor_profiles")
+        .upsert(payload, { onConflict: "user_id" });
+
+      if (!error) {
+        persistedColumn = column;
+        upsertError = null;
+        break;
+      }
+
+      upsertError = error.message;
+      if (isMissingColumnError(error.message, column)) {
+        continue;
+      }
+      break;
     }
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (!persistedColumn) {
+      const fallbackMessage = "DB列 is_published / is_public が未作成です。supabase/schema.sql を確認してください。";
+      return NextResponse.json({ error: upsertError ?? fallbackMessage }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, isPublished: publish });
+
+    return NextResponse.json({ ok: true, isPublished: publish, persistedColumn });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update publish state";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -297,7 +297,11 @@ export default function GlobalTopBar() {
             onMouseEnter={() => setMenuOpen(true)}
             onMouseLeave={() => setMenuOpen(false)}
           >
-            <button type="button" className="flex min-h-[52px] items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-[#F9FAFB] sm:min-h-[56px] sm:min-w-[172px] sm:gap-3 sm:px-3">
+            <button
+              id="topbar-profile-menu-button"
+              type="button"
+              className="flex min-h-[52px] items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-[#F9FAFB] sm:min-h-[56px] sm:min-w-[172px] sm:gap-3 sm:px-3"
+            >
               <div className="hidden text-right leading-tight sm:block">
                 <div className="text-[12px] font-semibold text-[#6B7280]">{profile.roleLabel}</div>
                 <div className="text-[15px] font-semibold text-[#374151]">{profile.name}</div>
@@ -317,6 +321,7 @@ export default function GlobalTopBar() {
               <div className="absolute right-0 top-full z-50 w-56 pt-3">
                 <div className="rounded-2xl border border-[#E5E7EB] bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
                   <Link
+                    id="topbar-account-settings-link"
                     href={profile.isGuest ? "/auth/login" : "/profile/settings?tab=manage"}
                     className="block rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#374151] transition hover:bg-[#ECFDF5] hover:text-[#10B981]"
                   >

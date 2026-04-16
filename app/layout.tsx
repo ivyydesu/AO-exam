@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import OnboardingVideoPopup from "../components/OnboardingVideoPopup";
+import OnboardingChecklist from "../components/OnboardingChecklist";
 import SessionIdleGuard from "../components/SessionIdleGuard";
 import AppShell from "../components/AppShell";
 
@@ -50,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-[#F9FAFB] text-[#111827]">
         <div className="accent-gradient h-1" />
         <SessionIdleGuard />
-        <OnboardingVideoPopup />
+        <OnboardingChecklist />
         <AppShell>{children}</AppShell>
       </body>
     </html>
