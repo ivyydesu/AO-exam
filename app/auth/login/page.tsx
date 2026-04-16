@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
@@ -14,6 +14,11 @@ import {
 } from "../../../lib/auth/emailThrottle";
 
 type CanonicalRole = "student" | "tutor" | "admin";
+
+function normalizeNextPath(raw: string | null) {
+  if (!raw) return "/home";
+  return raw.startsWith("/") ? raw : "/home";
+}
 
 function normalizeRole(raw: unknown): CanonicalRole | null {
   const normalized = String(raw ?? "").trim();
@@ -53,6 +58,7 @@ function LoginPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [resetCooldown, setResetCooldown] = useState(0);
+  const callbackHandledCodeRef = useRef<string | null>(null);
 
   const getLandingPath = (currentRole: "student" | "tutor" | "admin") => {
     if (currentRole === "student" || currentRole === "tutor") return "/home";
@@ -64,11 +70,15 @@ function LoginPageContent() {
     const registered = searchParams.get("registered");
     const verified = searchParams.get("verified");
     const autoLoggedOut = searchParams.get("autoLoggedOut");
+    const callbackError = searchParams.get("error");
     const hintedRole = normalizeRole(searchParams.get("role"));
     setRoleHint(hintedRole === "tutor" ? "tutor" : "student");
     if (registered === "1") setNotice("登録完了。メール認証後にログインしてください。");
     if (verified === "1") setNotice("メール認証が完了しました。ログインできます。");
     if (autoLoggedOut === "1") setNotice("30分以上操作がなかったため、安全のため自動ログアウトしました。");
+    if (callbackError === "missing_code") {
+      setError("認証コードが見つかりませんでした。もう一度ログインしてください。");
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -142,6 +152,54 @@ function LoginPageContent() {
 
     return resolvedRole;
   };
+
+  useEffect(() => {
+    const code = searchParams.get("code");
+    if (!code) return;
+    if (callbackHandledCodeRef.current === code) return;
+    callbackHandledCodeRef.current = code;
+
+    let active = true;
+
+    const consumeAuthCallback = async () => {
+      setLoading(true);
+      setError(null);
+      setNotice("認証情報を確認しています...");
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) throw new Error("Supabaseが初期化されていません");
+
+        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError || !data.user) {
+          throw new Error(exchangeError?.message ?? "認証コードの処理に失敗しました");
+        }
+
+        const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
+        const nextPath = normalizeNextPath(searchParams.get("next"));
+        const destination = resolvedRole === "admin" ? getLandingPath(resolvedRole) : nextPath;
+
+        if (resolvedRole !== "admin") {
+          await fetch("/api/auth/admin-2fa/clear", { method: "POST" }).catch(() => undefined);
+        }
+
+        if (!active) return;
+        router.replace(destination);
+      } catch (e) {
+        if (!active) return;
+        setNotice(null);
+        setError(normalizeAuthErrorMessage(e instanceof Error ? e.message : "認証処理に失敗しました"));
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void consumeAuthCallback();
+    return () => {
+      active = false;
+    };
+  }, [searchParams, router, roleHint]);
 
   const signInPassword = async (event: React.FormEvent) => {
     event.preventDefault();
