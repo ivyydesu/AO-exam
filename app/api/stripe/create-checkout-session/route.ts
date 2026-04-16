@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
-import { getPlatformFeePercent } from "../../../../lib/platformFee";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "../../../../lib/platformFee";
 import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
 import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
@@ -79,8 +79,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tutor verification is not approved yet" }, { status: 403 });
     }
 
-    const feePercent = await getPlatformFeePercent(supabaseAdmin);
-    const feeAmount = Math.floor((request.budget * feePercent) / 100);
+    const feeAmount = Math.floor((request.budget * DEFAULT_PLATFORM_FEE_PERCENT) / 100);
 
     const paymentIntentData: {
       capture_method: "manual";
@@ -97,6 +96,7 @@ export async function POST(req: NextRequest) {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      currency: "jpy",
       payment_method_types: ["card"],
       line_items: [
         {

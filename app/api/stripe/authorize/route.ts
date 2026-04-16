@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
-import { getPlatformFeePercent } from "../../../../lib/platformFee";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "../../../../lib/platformFee";
 import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
 import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
@@ -101,8 +101,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid request budget" }, { status: 400 });
     }
 
-    const feePercent = await getPlatformFeePercent(supabaseAdmin);
-    const applicationFeeAmount = Math.floor((amount * feePercent) / 100);
+    const applicationFeeAmount = Math.floor((amount * DEFAULT_PLATFORM_FEE_PERCENT) / 100);
 
     const paymentIntentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
       amount,
