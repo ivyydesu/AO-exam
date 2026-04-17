@@ -79,7 +79,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tutor verification is not approved yet" }, { status: 403 });
     }
 
-    const feeAmount = Math.floor((request.budget * DEFAULT_PLATFORM_FEE_PERCENT) / 100);
+    const amount = Number(request.budget);
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return NextResponse.json({ error: "Invalid request budget" }, { status: 400 });
+    }
+
+    const feeAmount = Math.floor((amount * DEFAULT_PLATFORM_FEE_PERCENT) / 100);
 
     const paymentIntentData: {
       capture_method: "manual";
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
           price_data: {
             currency: "jpy",
             product_data: { name: request.title },
-            unit_amount: request.budget
+            unit_amount: amount
           },
           quantity: 1
         }
