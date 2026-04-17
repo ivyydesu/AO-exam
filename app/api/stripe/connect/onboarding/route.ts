@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       const created = await stripe.accounts.create({
         type: "express",
         country: "JP",
+        default_currency: "jpy",
         email: user.email || undefined,
         business_type: "individual",
         business_profile: {
@@ -76,4 +77,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-
