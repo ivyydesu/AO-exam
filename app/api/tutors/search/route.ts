@@ -12,6 +12,43 @@ function normalizeForMatch(value: string) {
   return value.toLowerCase().replace(/\s+/g, "");
 }
 
+function isFilled(value: unknown) {
+  return String(value ?? "").trim().length > 0;
+}
+
+type TutorRow = {
+  user_id: string;
+  nickname?: string | null;
+  avatar_url: string | null;
+  university: string;
+  department: string;
+  seminar: string;
+  grade: string;
+  research_theme: string;
+  coaching_experience: string;
+  bio: string;
+};
+
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+  school: string | null;
+  role: string;
+};
+
+function isProfileCompleted(profile: ProfileRow | undefined, tutor: TutorRow) {
+  if (!profile) return false;
+  return (
+    isFilled(profile.full_name) &&
+    isFilled(profile.school) &&
+    isFilled(tutor.nickname) &&
+    isFilled(tutor.department) &&
+    isFilled(tutor.grade) &&
+    isFilled(tutor.research_theme) &&
+    isFilled(tutor.bio)
+  );
+}
+
 export async function GET(req: NextRequest) {
   try {
     const university = clampQuery(req.nextUrl.searchParams.get("university")?.trim() ?? "");
@@ -33,93 +70,86 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    let tutors:
-      | Array<{
-          user_id: string;
-          nickname?: string | null;
-          avatar_url: string | null;
-          university: string;
-          department: string;
-          seminar: string;
-          grade: string;
-          research_theme: string;
-          coaching_experience: string;
-          bio: string;
-          is_published?: boolean;
-        }>
-      | null = null;
+    let tutors: TutorRow[] | null = null;
 
-    const withPublishQuery = supabaseAdmin
+    const withNicknameQuery = supabaseAdmin
       .from("tutor_profiles")
-      .select("user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published");
-    let query = withPublishQuery;
-    if (!canIncludeUnpublished) query = query.eq("is_published", true);
+      .select("user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio");
+    let query = withNicknameQuery;
     if (seminar) query = query.ilike("seminar", `%${seminar}%`);
     if (researchTheme) query = query.ilike("research_theme", `%${researchTheme}%`);
     if (grade) query = query.eq("grade", grade);
-    const withPublish = await query.limit(100);
-    if (!withPublish.error) {
-      tutors = withPublish.data;
+    const withNickname = await query.limit(100);
+    if (!withNickname.error) {
+      tutors = withNickname.data;
     } else {
-      // fallback-1: nickname列が未反映でも公開判定は維持する
-      let fallbackPublicQuery = supabaseAdmin
-        .from("tutor_profiles")
-        .select("user_id, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published");
-      if (!canIncludeUnpublished) fallbackPublicQuery = fallbackPublicQuery.eq("is_published", true);
-      if (seminar) fallbackPublicQuery = fallbackPublicQuery.ilike("seminar", `%${seminar}%`);
-      if (researchTheme) fallbackPublicQuery = fallbackPublicQuery.ilike("research_theme", `%${researchTheme}%`);
-      if (grade) fallbackPublicQuery = fallbackPublicQuery.eq("grade", grade);
-      const fallbackPublic = await fallbackPublicQuery.limit(100);
-      if (!fallbackPublic.error) {
-        tutors = fallbackPublic.data;
-      } else if (!canIncludeUnpublished) {
-        // 公開状態の判定ができない時は、漏えい防止のため空配列を返す
-        return NextResponse.json({ items: [] });
-      } else {
-        let fallbackQuery = supabaseAdmin
+      let fallbackQuery = supabaseAdmin
         .from("tutor_profiles")
         .select("user_id, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio");
-        if (seminar) fallbackQuery = fallbackQuery.ilike("seminar", `%${seminar}%`);
-        if (researchTheme) fallbackQuery = fallbackQuery.ilike("research_theme", `%${researchTheme}%`);
-        if (grade) fallbackQuery = fallbackQuery.eq("grade", grade);
-        const fallback = await fallbackQuery.limit(100);
-        if (fallback.error) {
-          return NextResponse.json({ error: fallback.error.message }, { status: 400 });
-        }
-        tutors = fallback.data;
+      if (seminar) fallbackQuery = fallbackQuery.ilike("seminar", `%${seminar}%`);
+      if (researchTheme) fallbackQuery = fallbackQuery.ilike("research_theme", `%${researchTheme}%`);
+      if (grade) fallbackQuery = fallbackQuery.eq("grade", grade);
+      const fallback = await fallbackQuery.limit(100);
+      if (fallback.error) {
+        return NextResponse.json({ error: fallback.error.message }, { status: 400 });
       }
+      tutors = fallback.data;
     }
 
     const userIds = (tutors ?? []).map((t) => t.user_id);
-    let names: Record<string, { school: string | null }> = {};
+    let profileMap = new Map<string, ProfileRow>();
+    let approvedSet = new Set<string>();
     if (userIds.length > 0) {
-      const { data: profiles } = await supabaseAdmin
+      const { data: profiles, error: profileError } = await supabaseAdmin
         .from("profiles")
-        .select("id, school, role")
+        .select("id, full_name, school, role")
         .in("id", userIds);
-      names = Object.fromEntries(
-        (profiles ?? [])
+      if (profileError) {
+        return NextResponse.json({ error: profileError.message }, { status: 400 });
+      }
+
+      profileMap = new Map(
+        ((profiles ?? []) as ProfileRow[])
           .filter((p) => p.role === "tutor")
-          .map((p) => [p.id, { school: p.school }])
+          .map((p) => [p.id, p])
+      );
+
+      const { data: verifications, error: verificationError } = await supabaseAdmin
+        .from("tutor_verifications")
+        .select("user_id, status")
+        .in("user_id", userIds);
+      if (verificationError && !canIncludeUnpublished) {
+        return NextResponse.json({ items: [] });
+      }
+      approvedSet = new Set(
+        (verifications ?? [])
+          .filter((v) => v.status === "approved")
+          .map((v) => v.user_id)
       );
     }
 
     const rawItems = (tutors ?? [])
-      .filter((t) => Boolean(names[t.user_id]))
-      .map((t) => ({
-        id: t.user_id,
-        name: (t.nickname ?? "").trim() || "先輩メンター",
-        school: names[t.user_id].school ?? "",
-        avatar: t.avatar_url ?? "",
-        university: t.university,
-        department: t.department,
-        seminar: t.seminar,
-        grade: t.grade,
-        researchTheme: t.research_theme,
-        coachingExperience: t.coaching_experience,
-        bio: t.bio,
-        isPublished: t.is_published === true
-      }));
+      .map((t) => {
+        const profile = profileMap.get(t.user_id);
+        if (!profile) return null;
+        const isPublished = isProfileCompleted(profile, t) && approvedSet.has(t.user_id);
+        if (!canIncludeUnpublished && !isPublished) return null;
+        return {
+          id: t.user_id,
+          name: (t.nickname ?? "").trim() || (profile.full_name ?? "").trim() || "先輩メンター",
+          school: profile.school ?? "",
+          avatar: t.avatar_url ?? "",
+          university: t.university,
+          department: t.department,
+          seminar: t.seminar,
+          grade: t.grade,
+          researchTheme: t.research_theme,
+          coachingExperience: t.coaching_experience,
+          bio: t.bio,
+          isPublished
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
 
     // 大学名欄は「先輩の合格校(school)」を最優先で判定し、
     // 併せて大学・学部名も拾えるように最終フィルタを実施

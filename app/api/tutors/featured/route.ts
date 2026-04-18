@@ -12,7 +12,6 @@ type TutorProfileRow = {
   research_theme: string | null;
   coaching_experience: string | null;
   bio: string | null;
-  is_published: boolean | null;
 };
 
 type ProfileRow = {
@@ -38,13 +37,30 @@ function pickTutorProfile(value: ProfileRow["tutor_profiles"]): TutorProfileRow 
   return value;
 }
 
+function isFilled(value: unknown) {
+  return String(value ?? "").trim().length > 0;
+}
+
+function isProfileCompleted(profile: ProfileRow, tutor: TutorProfileRow | null) {
+  if (!tutor) return false;
+  return (
+    isFilled(profile.full_name) &&
+    isFilled(profile.school) &&
+    isFilled(tutor.nickname) &&
+    isFilled(tutor.department) &&
+    isFilled(tutor.grade) &&
+    isFilled(tutor.research_theme) &&
+    isFilled(tutor.bio)
+  );
+}
+
 export async function GET() {
   try {
     const supabaseAdmin = getSupabaseAdmin();
     const { data: profiles, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(
-        "id, full_name, school, role, tutor_profiles(user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published)"
+        "id, full_name, school, role, tutor_profiles(user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio)"
       )
       .eq("role", "tutor")
       .limit(200);
@@ -53,18 +69,18 @@ export async function GET() {
       return NextResponse.json({ error: profileError.message }, { status: 400 });
     }
 
-    const visibleTutors = ((profiles ?? []) as ProfileRow[])
+    const tutorCandidates = ((profiles ?? []) as ProfileRow[])
       .map((profile) => {
         const tutor = pickTutorProfile(profile.tutor_profiles);
         const tutorId = (tutor?.user_id ?? profile.id) ?? profile.id;
         return { profile, tutor, tutorId };
       })
-      .filter((row) => Boolean(row.tutor) && row.tutor?.is_published === true);
-    if (visibleTutors.length === 0) {
+      .filter((row) => Boolean(row.tutor));
+    if (tutorCandidates.length === 0) {
       return NextResponse.json({ items: [] });
     }
 
-    const tutorIds = Array.from(new Set(visibleTutors.map((row) => row.tutorId)));
+    const tutorIds = Array.from(new Set(tutorCandidates.map((row) => row.tutorId)));
 
     const { data: verifications } = await supabaseAdmin
       .from("tutor_verifications")
@@ -75,6 +91,13 @@ export async function GET() {
         .filter((v) => v.status === "approved")
         .map((v) => v.user_id)
     );
+
+    const visibleTutors = tutorCandidates.filter(
+      ({ profile, tutor, tutorId }) => isProfileCompleted(profile, tutor) && verifiedSet.has(tutorId)
+    );
+    if (visibleTutors.length === 0) {
+      return NextResponse.json({ items: [] });
+    }
 
     const { data: requests } = await supabaseAdmin
       .from("requests")
