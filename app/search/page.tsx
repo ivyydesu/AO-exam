@@ -19,6 +19,7 @@ type TutorSearchItem = {
 };
 
 const gradeOptions = ["", "1年", "2年", "3年", "4年", "修士1年", "修士2年"];
+const fallbackAvatar = "/avatars/user-default-gray.svg";
 
 export default function SearchPage() {
   const [keyword, setKeyword] = useState("");
@@ -183,9 +184,15 @@ export default function SearchPage() {
                 >
                   <div className="flex items-start gap-4 p-5">
                     <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-[#F3F4F6]">
-                      {item.avatar ? (
-                        <img src={item.avatar} alt={item.name} className="h-full w-full object-cover" />
-                      ) : null}
+                      <img
+                        src={item.avatar || fallbackAvatar}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.onerror = null;
+                          event.currentTarget.src = fallbackAvatar;
+                        }}
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">

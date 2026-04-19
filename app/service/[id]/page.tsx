@@ -23,7 +23,7 @@ type Tutor = {
   verified?: boolean;
 };
 
-const defaultAvatar = "/avatars/mentor.png";
+const defaultAvatar = "/avatars/user-default-gray.svg";
 
 function parseBulletItems(raw: string, fallback: string[]) {
   const normalized = raw
@@ -208,7 +208,15 @@ export default function ServicePage({ params }: { params: { id: string } }) {
               <div className="flex flex-col gap-8 md:flex-row">
                 <div className="w-full shrink-0 md:w-1/3">
                   <div className="group relative aspect-[3/4] overflow-hidden rounded-xl shadow-md">
-                    <img alt={tutor.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" src={tutor.avatar} />
+                    <img
+                      alt={tutor.name}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      src={tutor.avatar}
+                      onError={(event) => {
+                        event.currentTarget.onerror = null;
+                        event.currentTarget.src = defaultAvatar;
+                      }}
+                    />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-4">
                       <div className="text-sm font-medium text-white">★ {tutor.rating} ({tutor.reviews}件)</div>
                     </div>

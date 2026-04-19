@@ -57,7 +57,7 @@ type FeaturedTutorApiItem = {
   reviews?: number;
 };
 
-const fallbackAvatar = "/avatars/mentor.png";
+const fallbackAvatar = "/avatars/user-default-gray.svg";
 
 const popularTags = [
   { label: "#ICT", cls: "bg-blue-50 text-blue-600" },
@@ -395,7 +395,15 @@ export default function HomePage() {
                       <article key={mentor.id} className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05),0_4px_6px_-2px_rgba(0,0,0,0.025)] transition-all duration-300 hover:shadow-xl">
                         <div className="mb-4 flex items-start gap-4">
                           <div className="relative shrink-0">
-                            <img alt="Mentor Profile" className="h-20 w-20 rounded-2xl object-cover shadow-md transition-transform duration-300 group-hover:scale-105" src={mentor.avatar} />
+                            <img
+                              alt="Mentor Profile"
+                              className="h-20 w-20 rounded-2xl object-cover shadow-md transition-transform duration-300 group-hover:scale-105"
+                              src={mentor.avatar}
+                              onError={(event) => {
+                                event.currentTarget.onerror = null;
+                                event.currentTarget.src = fallbackAvatar;
+                              }}
+                            />
                             <div className="absolute -bottom-2 -right-2 flex items-center gap-0.5 rounded-lg border border-gray-100 bg-white px-1.5 py-0.5 shadow-sm">
                               <span className="text-xs text-yellow-400">★</span>
                               <span className="text-xs font-bold text-gray-800">{mentor.rating}</span>
