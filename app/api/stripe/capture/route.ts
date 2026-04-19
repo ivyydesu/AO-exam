@@ -7,6 +7,12 @@ import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 import { isStrictAdmin } from "../../../../lib/auth/adminAllowlist";
 
+function compactMetadata(values: Record<string, string | null | undefined>) {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => typeof value === "string" && value.length > 0)
+  ) as Record<string, string>;
+}
+
 export async function POST(req: NextRequest) {
   try {
     assertTrustedOrigin(req);
@@ -78,6 +84,31 @@ export async function POST(req: NextRequest) {
       paymentIntent.status === "succeeded"
         ? paymentIntent
         : await stripe.paymentIntents.capture(resolvedPaymentIntentId);
+
+    try {
+      const chargeId =
+        typeof captured.latest_charge === "string"
+          ? captured.latest_charge
+          : captured.latest_charge?.id ?? null;
+      if (chargeId) {
+        const chargeMetadata = compactMetadata({
+          request_id: typeof captured.metadata?.request_id === "string" ? captured.metadata.request_id : resolvedRequestId,
+          platform_fee_percent: captured.metadata?.platform_fee_percent,
+          platform_fee_amount_jpy: captured.metadata?.platform_fee_amount_jpy,
+          tutor_stripe_account_id: captured.metadata?.tutor_stripe_account_id,
+          platform_fee_applied: captured.metadata?.platform_fee_applied
+        });
+        await stripe.charges.update(chargeId, {
+          metadata: chargeMetadata,
+          description:
+            captured.metadata?.platform_fee_percent && captured.metadata?.platform_fee_amount_jpy
+              ? `platform_fee ${captured.metadata.platform_fee_percent}% (${captured.metadata.platform_fee_amount_jpy} JPY)`
+              : undefined
+        });
+      }
+    } catch {
+      // Ignore metadata sync failure and continue payment flow.
+    }
 
     if (!resolvedRequestId) {
       resolvedRequestId =

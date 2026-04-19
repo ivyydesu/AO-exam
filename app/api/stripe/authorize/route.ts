@@ -103,19 +103,21 @@ export async function POST(req: NextRequest) {
 
     const feePercent = await getPlatformFeePercent(supabaseAdmin);
     const applicationFeeAmount = Math.floor((amount * feePercent) / 100);
+    const feeMetadata = {
+      request_id: requestRow.id,
+      platform_fee_percent: String(feePercent),
+      platform_fee_amount_jpy: String(applicationFeeAmount),
+      tutor_stripe_account_id: tutorProfile?.stripe_account_id ?? "",
+      platform_fee_applied: tutorProfile?.stripe_account_id ? "true" : "false"
+    };
 
     const paymentIntentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
       amount,
       currency: "jpy",
       capture_method: "manual",
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        request_id: requestRow.id,
-        platform_fee_percent: String(feePercent),
-        platform_fee_amount_jpy: String(applicationFeeAmount),
-        tutor_stripe_account_id: tutorProfile?.stripe_account_id ?? "",
-        platform_fee_applied: tutorProfile?.stripe_account_id ? "true" : "false"
-      }
+      metadata: feeMetadata,
+      description: `platform_fee ${feePercent}% (${applicationFeeAmount} JPY)`
     };
 
     if (tutorProfile?.stripe_account_id) {

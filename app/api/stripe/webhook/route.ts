@@ -5,6 +5,12 @@ import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { ensurePaidChatGroup } from "../../../../lib/chatGroups";
 
+function compactMetadata(values: Record<string, string | null | undefined>) {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => typeof value === "string" && value.length > 0)
+  ) as Record<string, string>;
+}
+
 export async function POST(req: Request) {
   const body = await req.text();
   const signature = headers().get("stripe-signature");
@@ -31,6 +37,32 @@ export async function POST(req: Request) {
 
     if (requestId && paymentIntentId) {
       const supabaseAdmin = getSupabaseAdmin();
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        const chargeId =
+          typeof paymentIntent.latest_charge === "string"
+            ? paymentIntent.latest_charge
+            : paymentIntent.latest_charge?.id ?? null;
+        if (chargeId) {
+          const chargeMetadata = compactMetadata({
+            request_id: requestId,
+            platform_fee_percent: paymentIntent.metadata?.platform_fee_percent,
+            platform_fee_amount_jpy: paymentIntent.metadata?.platform_fee_amount_jpy,
+            tutor_stripe_account_id: paymentIntent.metadata?.tutor_stripe_account_id,
+            platform_fee_applied: paymentIntent.metadata?.platform_fee_applied
+          });
+          await stripe.charges.update(chargeId, {
+            metadata: chargeMetadata,
+            description:
+              paymentIntent.metadata?.platform_fee_percent && paymentIntent.metadata?.platform_fee_amount_jpy
+                ? `platform_fee ${paymentIntent.metadata.platform_fee_percent}% (${paymentIntent.metadata.platform_fee_amount_jpy} JPY)`
+                : undefined
+          });
+        }
+      } catch {
+        // Ignore metadata sync failure and keep webhook flow resilient.
+      }
+
       const { data: requestForChat } = await supabaseAdmin
         .from("requests")
         .select("id, title, requester_id, tutor_id")

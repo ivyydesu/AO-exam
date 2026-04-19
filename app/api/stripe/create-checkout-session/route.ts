@@ -87,16 +87,18 @@ export async function POST(req: NextRequest) {
 
     const feePercent = await getPlatformFeePercent(supabaseAdmin);
     const feeAmount = Math.floor((amount * feePercent) / 100);
+    const feeMetadata = {
+      request_id: request.id,
+      platform_fee_percent: String(feePercent),
+      platform_fee_amount_jpy: String(feeAmount),
+      tutor_stripe_account_id: tutorStripeAccountId ?? "",
+      platform_fee_applied: tutorStripeAccountId ? "true" : "false"
+    };
 
     const paymentIntentData: Stripe.Checkout.SessionCreateParams.PaymentIntentData = {
       capture_method: "manual",
-      metadata: {
-        request_id: request.id,
-        platform_fee_percent: String(feePercent),
-        platform_fee_amount_jpy: String(feeAmount),
-        tutor_stripe_account_id: tutorStripeAccountId ?? "",
-        platform_fee_applied: tutorStripeAccountId ? "true" : "false"
-      }
+      metadata: feeMetadata,
+      description: `platform_fee ${feePercent}% (${feeAmount} JPY)`
     };
 
     if (tutorStripeAccountId) {
@@ -119,13 +121,7 @@ export async function POST(req: NextRequest) {
         }
       ],
       payment_intent_data: paymentIntentData,
-      metadata: {
-        request_id: request.id,
-        platform_fee_percent: String(feePercent),
-        platform_fee_amount_jpy: String(feeAmount),
-        tutor_stripe_account_id: tutorStripeAccountId ?? "",
-        platform_fee_applied: tutorStripeAccountId ? "true" : "false"
-      },
+      metadata: feeMetadata,
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/chat?requestId=${request.id}&paid=1`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/requests/${request.id}?canceled=1`
     });
