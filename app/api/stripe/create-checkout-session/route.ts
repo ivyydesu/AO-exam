@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
-import { DEFAULT_PLATFORM_FEE_PERCENT } from "../../../../lib/platformFee";
+import { getPlatformFeePercent } from "../../../../lib/platformFee";
 import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
 import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
@@ -84,14 +85,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid request budget" }, { status: 400 });
     }
 
-    const feeAmount = Math.floor((amount * DEFAULT_PLATFORM_FEE_PERCENT) / 100);
+    const feePercent = await getPlatformFeePercent(supabaseAdmin);
+    const feeAmount = Math.floor((amount * feePercent) / 100);
 
-    const paymentIntentData: {
-      capture_method: "manual";
-      application_fee_amount?: number;
-      transfer_data?: { destination: string };
-    } = {
-      capture_method: "manual"
+    const paymentIntentData: Stripe.Checkout.SessionCreateParams.PaymentIntentData = {
+      capture_method: "manual",
+      metadata: {
+        request_id: request.id,
+        platform_fee_percent: String(feePercent),
+        platform_fee_amount_jpy: String(feeAmount),
+        tutor_stripe_account_id: tutorStripeAccountId ?? "",
+        platform_fee_applied: tutorStripeAccountId ? "true" : "false"
+      }
     };
 
     if (tutorStripeAccountId) {
@@ -115,7 +120,11 @@ export async function POST(req: NextRequest) {
       ],
       payment_intent_data: paymentIntentData,
       metadata: {
-        request_id: request.id
+        request_id: request.id,
+        platform_fee_percent: String(feePercent),
+        platform_fee_amount_jpy: String(feeAmount),
+        tutor_stripe_account_id: tutorStripeAccountId ?? "",
+        platform_fee_applied: tutorStripeAccountId ? "true" : "false"
       },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/chat?requestId=${request.id}&paid=1`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/requests/${request.id}?canceled=1`

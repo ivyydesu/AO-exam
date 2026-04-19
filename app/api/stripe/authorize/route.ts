@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../../lib/stripe";
 import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { getAppModeFromRequest } from "../../../../lib/appMode";
-import { DEFAULT_PLATFORM_FEE_PERCENT } from "../../../../lib/platformFee";
+import { getPlatformFeePercent } from "../../../../lib/platformFee";
 import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
 import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
@@ -101,7 +101,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid request budget" }, { status: 400 });
     }
 
-    const applicationFeeAmount = Math.floor((amount * DEFAULT_PLATFORM_FEE_PERCENT) / 100);
+    const feePercent = await getPlatformFeePercent(supabaseAdmin);
+    const applicationFeeAmount = Math.floor((amount * feePercent) / 100);
 
     const paymentIntentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
       amount,
@@ -109,7 +110,11 @@ export async function POST(req: NextRequest) {
       capture_method: "manual",
       automatic_payment_methods: { enabled: true },
       metadata: {
-        request_id: requestRow.id
+        request_id: requestRow.id,
+        platform_fee_percent: String(feePercent),
+        platform_fee_amount_jpy: String(applicationFeeAmount),
+        tutor_stripe_account_id: tutorProfile?.stripe_account_id ?? "",
+        platform_fee_applied: tutorProfile?.stripe_account_id ? "true" : "false"
       }
     };
 
