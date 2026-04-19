@@ -680,7 +680,7 @@ export default function ProfileSettingsPage() {
 
                   <div className="flex-1 pt-2 text-center md:pt-12 md:text-left">
                     <h2 className="flex flex-wrap items-center justify-center gap-2 text-4xl font-bold leading-none text-[#111827] md:justify-start lg:text-5xl">
-                      {form.nickname?.trim() || form.full_name || "先輩メンター"}
+                      {form.nickname?.trim() || form.full_name || "未設定"}
                       {verification.status === "approved" ? (
                         <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                           学生証認証済み
@@ -691,7 +691,7 @@ export default function ProfileSettingsPage() {
                         </span>
                       )}
                     </h2>
-                    <p className="mt-1 text-sm text-[#6B7280]">{form.school || "成蹊大学"}</p>
+                    <p className="mt-1 text-sm text-[#6B7280]">{form.school || "未設定"}</p>
                   </div>
                   </div>
 

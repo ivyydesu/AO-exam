@@ -65,17 +65,17 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           setTutor({
             id: data.id,
             name: data.name,
-            university: data.university,
-            department: data.department,
-            year: data.year ?? "2年",
+            university: data.university || "未設定",
+            department: data.department || "未設定",
+            year: data.year || "未設定",
             acceptedUniversities: data.accepted_universities ?? [],
-            theme: data.theme ?? "",
-            experience: data.experience ?? "",
+            theme: data.theme || "未設定",
+            experience: data.experience || "未設定",
             rating: Number(data.rating ?? 0),
             reviews: Number(data.reviews ?? 0),
             avatar: data.avatar_url || defaultAvatar,
-            seminar: data.seminar || "教育行政ゼミ",
-            bio: data.bio ?? ""
+            seminar: data.seminar || "未設定",
+            bio: data.bio || "未設定"
           });
           return;
         }
@@ -104,18 +104,18 @@ export default function ServicePage({ params }: { params: { id: string } }) {
         };
         setTutor({
           id: item.id,
-          name: item.name,
-          university: item.university || "",
-          department: item.department || "",
-          year: item.grade || "",
+          name: item.name || "未設定",
+          university: item.university || "未設定",
+          department: item.department || "未設定",
+          year: item.grade || "未設定",
           acceptedUniversities: item.school ? [item.school] : [],
-          theme: item.researchTheme || "",
-          experience: item.coachingExperience || "",
+          theme: item.researchTheme || "未設定",
+          experience: item.coachingExperience || "未設定",
           rating: 5,
           reviews: 0,
           avatar: item.avatar || defaultAvatar,
-          seminar: item.seminar || "教育行政ゼミ",
-          bio: item.bio || "",
+          seminar: item.seminar || "未設定",
+          bio: item.bio || "未設定",
           verified: Boolean(item.verified)
         });
       } catch {
@@ -182,11 +182,9 @@ export default function ServicePage({ params }: { params: { id: string } }) {
     );
   }
 
-  const themeItems = parseBulletItems(tutor.theme, ["探究テーマはプロフィールで設定してください"]);
-  const experienceItems = parseBulletItems(tutor.experience, ["指導経験はプロフィールで設定してください"]);
-  const intro = tutor.bio?.trim()
-    ? tutor.bio
-    : `こんにちは！${tutor.university}の${tutor.name}です。AO入試に向けて、あなたの強みを一緒に整理します。`;
+  const themeItems = parseBulletItems(tutor.theme, ["未設定"]);
+  const experienceItems = parseBulletItems(tutor.experience, ["未設定"]);
+  const intro = tutor.bio?.trim() || "未設定";
   const dynamicTags = Array.from(
     new Set([tutor.department, tutor.seminar, ...themeItems].map((item) => item.trim()).filter(Boolean))
   ).slice(0, 4);
