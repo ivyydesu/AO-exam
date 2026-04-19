@@ -43,10 +43,11 @@ function isFilled(value: unknown) {
 
 function isProfileCompleted(profile: ProfileRow, tutor: TutorProfileRow | null) {
   if (!tutor) return false;
+  const hasDisplayName = isFilled(tutor.nickname) || isFilled(profile.full_name);
+  const hasSchoolInfo = isFilled(profile.school) || isFilled(tutor.university);
   return (
-    isFilled(profile.full_name) &&
-    isFilled(profile.school) &&
-    isFilled(tutor.nickname) &&
+    hasDisplayName &&
+    hasSchoolInfo &&
     isFilled(tutor.department) &&
     isFilled(tutor.grade) &&
     isFilled(tutor.research_theme) &&

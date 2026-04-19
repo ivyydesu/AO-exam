@@ -38,10 +38,11 @@ type ProfileRow = {
 
 function isProfileCompleted(profile: ProfileRow | undefined, tutor: TutorRow) {
   if (!profile) return false;
+  const hasDisplayName = isFilled(tutor.nickname) || isFilled(profile.full_name);
+  const hasSchoolInfo = isFilled(profile.school) || isFilled(tutor.university);
   return (
-    isFilled(profile.full_name) &&
-    isFilled(profile.school) &&
-    isFilled(tutor.nickname) &&
+    hasDisplayName &&
+    hasSchoolInfo &&
     isFilled(tutor.department) &&
     isFilled(tutor.grade) &&
     isFilled(tutor.research_theme) &&
