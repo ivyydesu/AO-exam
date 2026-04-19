@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "../../../../lib/supabase/server";
 import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
 
 const UUID_V4_OR_V1 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MENTOR_ROLES = new Set(["tutor", "university", "mentor", "university_student", "college_student", "大学生", "先輩"]);
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -29,8 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       .select("id, full_name, school, role")
       .eq("id", tutorId)
       .maybeSingle();
-    const mentorRoles = new Set(["tutor", "university"]);
-    if (!profile || !mentorRoles.has(String(profile.role))) {
+    if (!profile || !MENTOR_ROLES.has(String(profile.role))) {
       return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
     }
 
@@ -68,20 +68,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
 
     if (!tutor) return NextResponse.json({ error: "Tutor profile not found" }, { status: 404 });
-    const isPublished = tutor.is_published === true;
-    const canViewUnpublished = requesterRole === "admin" || requesterId === tutorId;
-    if (!isPublished && !canViewUnpublished) {
-      return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
-    }
-
-    let isVerified = false;
     const { data: verification } = await supabaseAdmin
       .from("tutor_verifications")
       .select("status")
       .eq("user_id", tutorId)
       .maybeSingle();
-    if (verification?.status === "approved") {
-      isVerified = true;
+    const isVerified = verification?.status === "approved";
+
+    const isPublished = isVerified;
+    const canViewUnpublished = requesterRole === "admin" || requesterId === tutorId;
+    if (!isPublished && !canViewUnpublished) {
+      return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
     }
 
     return NextResponse.json({

@@ -12,10 +12,6 @@ function normalizeForMatch(value: string) {
   return value.toLowerCase().replace(/\s+/g, "");
 }
 
-function isFilled(value: unknown) {
-  return String(value ?? "").trim().length > 0;
-}
-
 type TutorRow = {
   user_id: string;
   nickname?: string | null;
@@ -35,20 +31,6 @@ type ProfileRow = {
   school: string | null;
   role: string;
 };
-
-function isProfileCompleted(profile: ProfileRow | undefined, tutor: TutorRow) {
-  if (!profile) return false;
-  const hasDisplayName = isFilled(tutor.nickname) || isFilled(profile.full_name);
-  const hasSchoolInfo = isFilled(profile.school) || isFilled(tutor.university);
-  return (
-    hasDisplayName &&
-    hasSchoolInfo &&
-    isFilled(tutor.department) &&
-    isFilled(tutor.grade) &&
-    isFilled(tutor.research_theme) &&
-    isFilled(tutor.bio)
-  );
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -111,7 +93,6 @@ export async function GET(req: NextRequest) {
 
       profileMap = new Map(
         ((profiles ?? []) as ProfileRow[])
-          .filter((p) => p.role === "tutor")
           .map((p) => [p.id, p])
       );
 
@@ -133,7 +114,7 @@ export async function GET(req: NextRequest) {
       .map((t) => {
         const profile = profileMap.get(t.user_id);
         if (!profile) return null;
-        const isPublished = isProfileCompleted(profile, t) && approvedSet.has(t.user_id);
+        const isPublished = approvedSet.has(t.user_id);
         if (!canIncludeUnpublished && !isPublished) return null;
         return {
           id: t.user_id,

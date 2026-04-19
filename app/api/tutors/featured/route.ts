@@ -22,6 +22,8 @@ type ProfileRow = {
   tutor_profiles: TutorProfileRow | TutorProfileRow[] | null;
 };
 
+const MENTOR_ROLES = ["tutor", "university", "mentor", "university_student", "college_student", "大学生", "先輩"];
+
 function shuffle<T>(list: T[]) {
   const copied = [...list];
   for (let i = copied.length - 1; i > 0; i -= 1) {
@@ -37,24 +39,6 @@ function pickTutorProfile(value: ProfileRow["tutor_profiles"]): TutorProfileRow 
   return value;
 }
 
-function isFilled(value: unknown) {
-  return String(value ?? "").trim().length > 0;
-}
-
-function isProfileCompleted(profile: ProfileRow, tutor: TutorProfileRow | null) {
-  if (!tutor) return false;
-  const hasDisplayName = isFilled(tutor.nickname) || isFilled(profile.full_name);
-  const hasSchoolInfo = isFilled(profile.school) || isFilled(tutor.university);
-  return (
-    hasDisplayName &&
-    hasSchoolInfo &&
-    isFilled(tutor.department) &&
-    isFilled(tutor.grade) &&
-    isFilled(tutor.research_theme) &&
-    isFilled(tutor.bio)
-  );
-}
-
 export async function GET() {
   try {
     const supabaseAdmin = getSupabaseAdmin();
@@ -63,7 +47,7 @@ export async function GET() {
       .select(
         "id, full_name, school, role, tutor_profiles(user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio)"
       )
-      .eq("role", "tutor")
+      .in("role", MENTOR_ROLES)
       .limit(200);
 
     if (profileError) {
@@ -93,9 +77,7 @@ export async function GET() {
         .map((v) => v.user_id)
     );
 
-    const visibleTutors = tutorCandidates.filter(
-      ({ profile, tutor, tutorId }) => isProfileCompleted(profile, tutor) && verifiedSet.has(tutorId)
-    );
+    const visibleTutors = tutorCandidates.filter(({ tutorId }) => verifiedSet.has(tutorId));
     if (visibleTutors.length === 0) {
       return NextResponse.json({ items: [] });
     }
