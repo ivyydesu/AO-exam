@@ -11,15 +11,30 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("profiles")
-      .select("onboarding_completed")
+      .select("has_seen_tutorial, onboarding_completed")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (error && !String(error.message || "").includes("onboarding_completed")) {
+    const missingHasSeenTutorial = String(error?.message || "").includes("has_seen_tutorial");
+    if (error && !missingHasSeenTutorial && !String(error.message || "").includes("onboarding_completed")) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ completed: Boolean(data?.onboarding_completed) });
+    if (missingHasSeenTutorial) {
+      const legacy = await supabaseAdmin
+        .from("profiles")
+        .select("onboarding_completed")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (legacy.error && !String(legacy.error.message || "").includes("onboarding_completed")) {
+        return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ completed: Boolean(legacy.data?.onboarding_completed) });
+    }
+
+    return NextResponse.json({ completed: Boolean(data?.has_seen_tutorial ?? data?.onboarding_completed) });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Unauthorized" }, { status: 401 });
   }
@@ -34,13 +49,36 @@ export async function POST(req: NextRequest) {
 
     const { error } = await supabaseAdmin
       .from("profiles")
-      .update({ onboarding_completed: completed })
+      .update({ has_seen_tutorial: completed, onboarding_completed: completed })
       .eq("id", user.id);
+
+    const missingHasSeenTutorial = String(error?.message || "").includes("has_seen_tutorial");
+    if (error && missingHasSeenTutorial) {
+      const legacyUpdate = await supabaseAdmin
+        .from("profiles")
+        .update({ onboarding_completed: completed })
+        .eq("id", user.id);
+
+      if (legacyUpdate.error && String(legacyUpdate.error.message || "").includes("onboarding_completed")) {
+        return NextResponse.json(
+          {
+            error: "profiles.has_seen_tutorial / onboarding_completed カラムが未作成です。Supabase SQL を反映してください。"
+          },
+          { status: 500 }
+        );
+      }
+
+      if (legacyUpdate.error) {
+        return NextResponse.json({ error: legacyUpdate.error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ ok: true, completed });
+    }
 
     if (error && String(error.message || "").includes("onboarding_completed")) {
       return NextResponse.json(
         {
-          error: "profiles.onboarding_completed カラムが未作成です。Supabase SQL を反映してください。"
+          error: "profiles.has_seen_tutorial / onboarding_completed カラムが未作成です。Supabase SQL を反映してください。"
         },
         { status: 500 }
       );

@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { normalizeUserRole } from "../lib/userRole";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type TourRole = "student" | "tutor";
 type TourTab = "manage" | "profile" | "notifications";
@@ -24,7 +25,8 @@ type TourStepDef = {
 
 const TOUR_PROGRESS_KEY_PREFIX = "uniBridgeTourProgress:v2:";
 const TOUR_DONE_SENTINEL = -1;
-const TOUR_SEEN_KEY_PREFIX = "has_seen_tour_";
+const TOUR_SEEN_KEY_PREFIX = "has_seen_tutorial_";
+const LEGACY_TOUR_SEEN_KEY_PREFIX = "has_seen_tour_";
 
 const TUTOR_TOUR_STEPS: TourStepDef[] = [
   {
@@ -281,9 +283,75 @@ function parseProgress(raw: string | null, stepCount: number) {
   return Math.min(stepCount - 1, Math.floor(value));
 }
 
-function hasSeenTour(userId: string) {
-  const raw = localStorage.getItem(`${TOUR_SEEN_KEY_PREFIX}${userId}`);
+function hasSeenTourInStorage(userId: string) {
+  const raw =
+    localStorage.getItem(`${TOUR_SEEN_KEY_PREFIX}${userId}`) ??
+    localStorage.getItem(`${LEGACY_TOUR_SEEN_KEY_PREFIX}${userId}`);
   return raw === "1" || raw === "true";
+}
+
+function setSeenTourInStorage(userId: string) {
+  localStorage.setItem(`${TOUR_SEEN_KEY_PREFIX}${userId}`, "true");
+  localStorage.setItem(`${LEGACY_TOUR_SEEN_KEY_PREFIX}${userId}`, "true");
+}
+
+type TourProfileResult = {
+  role: unknown;
+  seenInProfile: boolean;
+};
+
+function containsMissingColumnError(message: unknown, column: string) {
+  return String(message ?? "").includes(column);
+}
+
+async function fetchTourProfile(supabase: SupabaseClient, userId: string): Promise<TourProfileResult> {
+  const withTutorialFlag = await supabase
+    .from("profiles")
+    .select("role, has_seen_tutorial")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!withTutorialFlag.error) {
+    return {
+      role: withTutorialFlag.data?.role,
+      seenInProfile: Boolean(withTutorialFlag.data?.has_seen_tutorial)
+    };
+  }
+
+  if (!containsMissingColumnError(withTutorialFlag.error.message, "has_seen_tutorial")) {
+    return {
+      role: null,
+      seenInProfile: false
+    };
+  }
+
+  const legacy = await supabase
+    .from("profiles")
+    .select("role, onboarding_completed")
+    .eq("id", userId)
+    .maybeSingle();
+
+  return {
+    role: legacy.data?.role,
+    seenInProfile: Boolean(legacy.data?.onboarding_completed)
+  };
+}
+
+async function saveSeenTourToProfile(supabase: SupabaseClient, userId: string) {
+  const updateWithTutorialFlag = await supabase
+    .from("profiles")
+    .update({ has_seen_tutorial: true, onboarding_completed: true })
+    .eq("id", userId);
+
+  if (!updateWithTutorialFlag.error) {
+    return;
+  }
+
+  if (!containsMissingColumnError(updateWithTutorialFlag.error.message, "has_seen_tutorial")) {
+    return;
+  }
+
+  await supabase.from("profiles").update({ onboarding_completed: true }).eq("id", userId);
 }
 
 function stepHref(step: TourStepDef) {
@@ -336,20 +404,26 @@ export default function OnboardingTour() {
     localStorage.setItem(progressKey, String(idx));
   };
 
-  const completeTour = () => {
-    if (uid) {
-      localStorage.setItem(`${TOUR_SEEN_KEY_PREFIX}${uid}`, "true");
+  const completeTour = async () => {
+    if (!uid) return;
+
+    setSeenTourInStorage(uid);
+    if (progressKey) {
+      localStorage.setItem(progressKey, String(TOUR_DONE_SENTINEL));
     }
-    if (!progressKey) return;
-    localStorage.setItem(progressKey, String(TOUR_DONE_SENTINEL));
+
     cleanupDriver();
     setRunning(false);
     setCurrentIndex(TOUR_DONE_SENTINEL);
     startGuardRef.current = null;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    await saveSeenTourToProfile(supabase, uid);
   };
 
   const handleSkip = async () => {
-    completeTour();
+    await completeTour();
   };
 
   useEffect(() => {
@@ -372,16 +446,12 @@ export default function OnboardingTour() {
         return;
       }
 
-      const { data: me } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
+      const profile = await fetchTourProfile(supabase, user.id);
 
       if (!mounted) return;
 
       const resolvedRole = normalizeUserRole(
-        me?.role ?? user.user_metadata?.role ?? user.app_metadata?.role,
+        profile.role ?? user.user_metadata?.role ?? user.app_metadata?.role,
         "student"
       );
       if (resolvedRole !== "tutor" && resolvedRole !== "student") {
@@ -394,9 +464,15 @@ export default function OnboardingTour() {
 
       const steps = resolvedRole === "tutor" ? TUTOR_TOUR_STEPS : STUDENT_TOUR_STEPS;
       const key = `${TOUR_PROGRESS_KEY_PREFIX}${user.id}:${resolvedRole}`;
-      const saved = hasSeenTour(user.id)
+      const seenInStorage = hasSeenTourInStorage(user.id);
+      const seen = profile.seenInProfile || seenInStorage;
+      const saved = seen
         ? TOUR_DONE_SENTINEL
         : parseProgress(localStorage.getItem(key), steps.length);
+
+      if (!profile.seenInProfile && seenInStorage) {
+        void saveSeenTourToProfile(supabase, user.id);
+      }
 
       setUid(user.id);
       setRole(resolvedRole);
@@ -414,7 +490,7 @@ export default function OnboardingTour() {
   useEffect(() => {
     if (!uid || !role || currentIndex === null || currentIndex === TOUR_DONE_SENTINEL) return;
     if (currentIndex >= tourSteps.length) {
-      completeTour();
+      void completeTour();
       return;
     }
 
@@ -436,7 +512,7 @@ export default function OnboardingTour() {
         return;
       }
       if (nextIndex >= tourSteps.length) {
-        completeTour();
+        await completeTour();
         return;
       }
 
