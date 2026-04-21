@@ -112,7 +112,7 @@ export async function GET() {
         const ids = requestIdsByTutor.get(tutorId) ?? [];
         const scores = ids.flatMap((id) => ratingByRequest.get(id) ?? []);
         if (scores.length === 0) {
-          reviewStats.set(tutorId, { rating: 5, reviews: 0 });
+          reviewStats.set(tutorId, { rating: 0, reviews: 0 });
         } else {
           const total = scores.reduce((sum, score) => sum + score, 0);
           reviewStats.set(tutorId, {
@@ -125,7 +125,7 @@ export async function GET() {
 
     const items = shuffle(
       visibleTutors.map(({ profile, tutor, tutorId }) => {
-        const stat = reviewStats.get(tutorId) ?? { rating: 5, reviews: 0 };
+        const stat = reviewStats.get(tutorId) ?? { rating: 0, reviews: 0 };
         const nickname = (tutor?.nickname ?? "").trim();
         const fullName = (profile.full_name ?? "").trim();
         const university = tutor?.university ?? "";

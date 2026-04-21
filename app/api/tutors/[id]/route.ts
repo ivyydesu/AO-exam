@@ -75,6 +75,28 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       .maybeSingle();
     const isVerified = verification?.status === "approved";
 
+    let rating = 0;
+    let reviews = 0;
+    const { data: requestRows } = await supabaseAdmin
+      .from("requests")
+      .select("id")
+      .eq("tutor_id", tutorId);
+    const requestIds = (requestRows ?? []).map((row) => row.id);
+    if (requestIds.length > 0) {
+      const { data: reviewRows } = await supabaseAdmin
+        .from("reviews")
+        .select("rating")
+        .in("request_id", requestIds);
+      const scores = (reviewRows ?? [])
+        .map((row) => Number(row.rating ?? 0))
+        .filter((score) => Number.isFinite(score) && score > 0);
+      reviews = scores.length;
+      if (reviews > 0) {
+        const total = scores.reduce((sum, score) => sum + score, 0);
+        rating = Number((total / reviews).toFixed(1));
+      }
+    }
+
     const isPublished = isVerified;
     const canViewUnpublished = requesterRole === "admin" || requesterId === tutorId;
     if (!isPublished && !canViewUnpublished) {
@@ -94,6 +116,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         researchTheme: tutor.research_theme ?? "",
         coachingExperience: tutor.coaching_experience ?? "",
         bio: tutor.bio ?? "",
+        rating,
+        reviews,
         isPublished,
         verified: isVerified
       }

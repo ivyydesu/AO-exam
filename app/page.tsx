@@ -14,6 +14,7 @@ type Mentor = {
   theme: string;
   tags: string[];
   rating: number;
+  reviews: number;
   verified?: boolean;
   experience: string;
   avatar: string;
@@ -151,7 +152,8 @@ export default function HomePage() {
             seminar: seminarRaw || "未設定",
             theme: researchThemeRaw || "未設定",
             tags: toTags(departmentRaw, seminarRaw, researchThemeRaw),
-            rating: Number(item.rating ?? 5),
+            rating: Number(item.rating ?? 0),
+            reviews: Number(item.reviews ?? 0),
             verified: Boolean(item.verified),
             experience: coachingExperienceRaw || "未設定",
             avatar: avatarRaw || fallbackAvatar
@@ -400,10 +402,12 @@ export default function HomePage() {
                                 event.currentTarget.src = fallbackAvatar;
                               }}
                             />
-                            <div className="absolute -bottom-2 -right-2 flex items-center gap-0.5 rounded-lg border border-gray-100 bg-white px-1.5 py-0.5 shadow-sm">
-                              <span className="text-xs text-yellow-400">★</span>
-                              <span className="text-xs font-bold text-gray-800">{mentor.rating}</span>
-                            </div>
+                            {mentor.reviews > 0 ? (
+                              <div className="absolute -bottom-2 -right-2 flex items-center gap-0.5 rounded-lg border border-gray-100 bg-white px-1.5 py-0.5 shadow-sm">
+                                <span className="text-xs text-yellow-400">★</span>
+                                <span className="text-xs font-bold text-gray-800">{mentor.rating}</span>
+                              </div>
+                            ) : null}
                           </div>
                           <div>
                             <div className="flex flex-wrap items-center gap-2">

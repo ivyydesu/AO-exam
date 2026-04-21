@@ -100,6 +100,8 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           avatar: string;
           seminar: string;
           bio: string;
+          rating?: number;
+          reviews?: number;
           verified?: boolean;
         };
         setTutor({
@@ -111,8 +113,8 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           acceptedUniversities: item.school ? [item.school] : [],
           theme: item.researchTheme || "未設定",
           experience: item.coachingExperience || "未設定",
-          rating: 5,
-          reviews: 0,
+          rating: Number(item.rating ?? 0),
+          reviews: Number(item.reviews ?? 0),
           avatar: item.avatar || defaultAvatar,
           seminar: item.seminar || "未設定",
           bio: item.bio || "未設定",
@@ -215,9 +217,11 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                         event.currentTarget.src = defaultAvatar;
                       }}
                     />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-4">
-                      <div className="text-sm font-medium text-white">★ {tutor.rating} ({tutor.reviews}件)</div>
-                    </div>
+                    {tutor.reviews > 0 ? (
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-4">
+                        <div className="text-sm font-medium text-white">★ {tutor.rating} ({tutor.reviews}件)</div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -230,7 +234,9 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                         </span>
                       ) : null}
                       <span className="inline-flex items-center rounded-full border border-green-200 bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">在籍確認済み</span>
-                      <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">トップ評価</span>
+                      {tutor.reviews > 0 ? (
+                        <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">トップ評価</span>
+                      ) : null}
                       <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-800">返信が早い</span>
                     </div>
                     <h1 className="mb-1 text-3xl font-bold text-gray-900">{tutor.name}</h1>
