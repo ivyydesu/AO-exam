@@ -182,6 +182,7 @@ export default function ChatHomePage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [readByRequest, setReadByRequest] = useState<Record<string, string>>({});
@@ -294,8 +295,9 @@ export default function ChatHomePage() {
 
         const detailMap = Object.fromEntries(((detailRes.data as RequestDetail[] | null) ?? []).map((item) => [item.request_id, item]));
         setDetailsByRequest(detailMap);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "チャットの読み込みに失敗しました");
+      } catch (error) {
+        console.error("Failed to load chat page", error);
+        setError(error instanceof Error ? error.message : "チャットの読み込みに失敗しました");
       } finally {
         setLoading(false);
       }
@@ -406,35 +408,38 @@ export default function ChatHomePage() {
   }, [selectedRequest, messagesByRequest]);
 
   const sendMessage = async () => {
-    if (!content.trim() || !userId || !selectedRequest || !canChat) return;
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
+    if (sending || !content.trim() || !userId || !selectedRequest || !canChat) return;
+    setError(null);
+    setSending(true);
     const message = content.trim();
     setContent("");
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      setError("セッションが切れています。再ログインしてください。");
-      setContent(message);
-      return;
-    }
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabaseが初期化されていません");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("セッションが切れています。再ログインしてください。");
 
-    const res = await fetch("/api/messages/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        requestId: selectedRequest.id,
-        type: "text",
-        content: message
-      })
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(payload?.error ?? "メッセージ送信に失敗しました");
+      const res = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          requestId: selectedRequest.id,
+          type: "text",
+          content: message
+        })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? "メッセージ送信に失敗しました");
+    } catch (error) {
+      console.error("Failed to send chat message", error);
+      setError(error instanceof Error ? error.message : "メッセージ送信に失敗しました");
       setContent(message);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -476,8 +481,9 @@ export default function ChatHomePage() {
       });
       const sendPayload = await sendRes.json().catch(() => ({}));
       if (!sendRes.ok) throw new Error(sendPayload?.error ?? "ファイルメッセージ送信に失敗しました");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "ファイル送信に失敗しました");
+    } catch (error) {
+      console.error("Failed to send file message", error);
+      setError(error instanceof Error ? error.message : "ファイル送信に失敗しました");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -509,8 +515,9 @@ export default function ChatHomePage() {
           [selectedRequest.id]: (prev[selectedRequest.id] ?? []).filter((item) => item.id !== messageId)
         }));
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "削除に失敗しました");
+    } catch (error) {
+      console.error("Failed to delete message", error);
+      setError(error instanceof Error ? error.message : "削除に失敗しました");
     } finally {
       setDeletingMessageId(null);
     }
@@ -801,10 +808,10 @@ export default function ChatHomePage() {
                       <button
                         type="button"
                         onClick={sendMessage}
-                        disabled={uploading || !content.trim()}
+                        disabled={uploading || sending || !content.trim()}
                         className="grid size-11 place-items-center rounded-full bg-[#00b884] text-white shadow-[0_0_15px_rgba(0,184,132,0.15)] transition hover:bg-[#00a374] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        ➤
+                        {sending ? "…" : "➤"}
                       </button>
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2 px-2 text-xs text-[#94A3B8]">

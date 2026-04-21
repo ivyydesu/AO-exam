@@ -104,18 +104,29 @@ export default function DemoRequestPage() {
     if (!userId) return;
     setLoadingId(requestId);
     setError("");
-    const res = await fetch(`/api/requests/${requestId}/decision`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tutorId: userId, action })
-    });
-    const data = await res.json().catch(() => ({}));
-    setLoadingId("");
-    if (!res.ok) {
-      setError(data.error ?? "更新に失敗しました");
-      return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+
+      const res = await fetch(`/api/requests/${requestId}/decision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ tutorId: userId, action })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "更新に失敗しました");
+
+      await load();
+    } catch (error) {
+      console.error("Failed to update request decision", error);
+      setError(error instanceof Error ? error.message : "更新に失敗しました");
+    } finally {
+      setLoadingId("");
     }
-    load();
   };
 
   const stats = useMemo(() => {

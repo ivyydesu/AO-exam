@@ -145,31 +145,38 @@ function RequestNewPageContent() {
     }
 
     setLoading(true);
-    const response = await fetch("/api/requests/create", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        requesterId: sessionUserId,
-        tutorId,
-        supportTopic,
-        supportTopicOther,
-        supportMethod,
-        estimatedDuration: duration,
-        requestedDeadline: deadline,
-        requestedPrice
-      })
-    });
-    const data = await response.json();
-    setLoading(false);
+    try {
+      const response = await fetch("/api/requests/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          requesterId: sessionUserId,
+          tutorId,
+          supportTopic,
+          supportTopicOther,
+          supportMethod,
+          estimatedDuration: duration,
+          requestedDeadline: deadline,
+          requestedPrice
+        })
+      });
+      const data = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      setError(data.error ?? "依頼送信に失敗しました");
-      return;
+      if (!response.ok) {
+        setError(data.error ?? "依頼送信に失敗しました");
+        return;
+      }
+
+      router.push(`/student/status/${data.requestId}`);
+    } catch (error) {
+      console.error("Failed to submit request", error);
+      setError(error instanceof Error ? error.message : "依頼送信に失敗しました");
+    } finally {
+      setLoading(false);
     }
-    router.push(`/student/status/${data.requestId}`);
   };
 
   return (

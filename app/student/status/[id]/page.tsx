@@ -95,35 +95,57 @@ export default function StudentRequestStatusPage() {
   const startCheckout = async () => {
     setLoadingAction("checkout");
     setError("");
-    const res = await fetch("/api/stripe/create-checkout-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
-    const data = await res.json().catch(() => ({}));
-    setLoadingAction("");
-    if (!res.ok) {
-      setError(data.error ?? "支払い開始に失敗");
-      return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+
+      const res = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "支払い開始に失敗");
+
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("Failed to start checkout", error);
+      setError(error instanceof Error ? error.message : "支払い開始に失敗");
+    } finally {
+      setLoadingAction("");
     }
-    window.location.href = data.url;
   };
 
   const completeAndCapture = async () => {
     setLoadingAction("capture");
     setError("");
-    const res = await fetch("/api/stripe/capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
-    const data = await res.json().catch(() => ({}));
-    setLoadingAction("");
-    if (!res.ok) {
-      setError(data.error ?? "売上確定に失敗");
-      return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+
+      const res = await fetch("/api/stripe/capture", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "売上確定に失敗");
+
+      await load();
+    } catch (error) {
+      console.error("Failed to capture payment", error);
+      setError(error instanceof Error ? error.message : "売上確定に失敗");
+    } finally {
+      setLoadingAction("");
     }
-    await load();
   };
 
   if (!userId) return <p className="text-sea">ログイン確認中...</p>;

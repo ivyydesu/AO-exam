@@ -58,136 +58,195 @@ export default function RequestDetailPage() {
   const [sessionRole, setSessionRole] = useState<"student" | "tutor" | "admin" | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [review, setReview] = useState("");
   const [rating, setRating] = useState(5);
 
   const refresh = async () => {
     const supabase = getSupabaseClient();
-    if (!supabase) return;
+    if (!supabase) throw new Error("Supabaseが初期化されていません");
 
-    const { data } = await supabase.from("requests_with_profile").select("*").eq("id", requestId).single();
+    const { data, error: requestError } = await supabase
+      .from("requests_with_profile")
+      .select("*")
+      .eq("id", requestId)
+      .single();
+    if (requestError) throw new Error(requestError.message);
     setRequest(data as RequestDetail);
 
-    const { data: detail } = await supabase
+    const { data: detail, error: detailError } = await supabase
       .from("request_details")
       .select("support_topic, support_method, estimated_duration, requested_deadline, suggested_price, requested_price")
       .eq("request_id", requestId)
       .maybeSingle();
+    if (detailError) throw new Error(detailError.message);
     setFormDetail((detail as RequestFormDetail | null) ?? null);
   };
 
   useEffect(() => {
     const load = async () => {
-      const supabase = getSupabaseClient();
-      if (!supabase) {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) throw new Error("Supabaseが初期化されていません");
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        const uid = sessionData.session?.user.id ?? null;
+        setSessionUserId(uid);
+
+        if (uid) {
+          const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
+          setSessionRole((profile?.role as "student" | "tutor" | "admin" | null) ?? null);
+        }
+
+        await refresh();
+      } catch (error) {
+        console.error("Failed to load request detail", error);
+        setError(error instanceof Error ? error.message : "依頼詳細の読み込みに失敗しました");
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const uid = sessionData.session?.user.id ?? null;
-      setSessionUserId(uid);
-
-      if (uid) {
-        const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
-        setSessionRole((profile?.role as "student" | "tutor" | "admin" | null) ?? null);
-      }
-
-      await refresh();
-      setLoading(false);
     };
 
-    load();
+    void load();
   }, [requestId]);
 
   const handleCheckout = async () => {
     setError(null);
-    const response = await fetch("/api/stripe/create-checkout-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
+    setActionLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
 
-    if (!response.ok) {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+
       const data = await response.json().catch(() => ({}));
-      setError(data.error ?? "決済セッションの作成に失敗しました");
-      return;
-    }
+      if (!response.ok) throw new Error(data.error ?? "決済セッションの作成に失敗しました");
+      if (!data.url) throw new Error("決済ページURLの取得に失敗しました");
 
-    const data = await response.json();
-    window.location.href = data.url;
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("Failed to create checkout session", error);
+      setError(error instanceof Error ? error.message : "決済セッションの作成に失敗しました");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleDecision = async (action: "approve" | "reject") => {
     setError(null);
     if (!sessionUserId) return;
+    setActionLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
 
-    const response = await fetch(`/api/requests/${requestId}/decision`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tutorId: sessionUserId, action })
-    });
+      const response = await fetch(`/api/requests/${requestId}/decision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ tutorId: sessionUserId, action })
+      });
 
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setError(data.error ?? "更新に失敗しました");
-      return;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "更新に失敗しました");
+
+      await refresh();
+    } catch (error) {
+      console.error("Failed to update request decision", error);
+      setError(error instanceof Error ? error.message : "更新に失敗しました");
+    } finally {
+      setActionLoading(false);
     }
-
-    await refresh();
   };
 
   const handleComplete = async () => {
     setError(null);
-    const response = await fetch("/api/stripe/capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
+    setActionLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+      const response = await fetch("/api/stripe/capture", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
 
-    if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setError(data.error ?? "決済確定に失敗しました");
-      return;
+      if (!response.ok) throw new Error(data.error ?? "決済確定に失敗しました");
+      await refresh();
+    } catch (error) {
+      console.error("Failed to capture payment", error);
+      setError(error instanceof Error ? error.message : "決済確定に失敗しました");
+    } finally {
+      setActionLoading(false);
     }
-    await refresh();
   };
 
   const handleCancel = async () => {
     setError(null);
-    const response = await fetch("/api/stripe/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
+    setActionLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+      const response = await fetch("/api/stripe/cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
 
-    if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setError(data.error ?? "キャンセルに失敗しました");
-      return;
+      if (!response.ok) throw new Error(data.error ?? "キャンセルに失敗しました");
+      await refresh();
+    } catch (error) {
+      console.error("Failed to cancel request", error);
+      setError(error instanceof Error ? error.message : "キャンセルに失敗しました");
+    } finally {
+      setActionLoading(false);
     }
-    await refresh();
   };
 
   const handleReview = async () => {
     setError(null);
     if (!sessionUserId) return;
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
+    setActionLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error("Supabaseが初期化されていません");
 
-    const { error: reviewError } = await supabase.from("reviews").insert({
-      request_id: requestId,
-      reviewer_id: sessionUserId,
-      review_text: review,
-      rating
-    });
+      const { error: reviewError } = await supabase.from("reviews").insert({
+        request_id: requestId,
+        reviewer_id: sessionUserId,
+        review_text: review,
+        rating
+      });
 
-    if (reviewError) {
-      setError(reviewError.message);
-      return;
+      if (reviewError) throw new Error(reviewError.message);
+      setReview("");
+    } catch (error) {
+      console.error("Failed to submit review", error);
+      setError(error instanceof Error ? error.message : "レビュー送信に失敗しました");
+    } finally {
+      setActionLoading(false);
     }
-
-    setReview("");
   };
 
   if (loading) return <p className="text-slate-600">読み込み中...</p>;
@@ -336,7 +395,11 @@ export default function RequestDetailPage() {
                     <span className="text-sm text-[#6B7280]">コメント</span>
                     <textarea className="h-24 rounded-lg border-[#E5E7EB]" value={review} onChange={(e) => setReview(e.target.value)} />
                   </label>
-                  <button className="w-fit rounded-lg bg-[#34D399] px-5 py-2 text-sm font-semibold text-white hover:bg-[#10B981]" onClick={handleReview}>
+                  <button
+                    className="w-fit rounded-lg bg-[#34D399] px-5 py-2 text-sm font-semibold text-white hover:bg-[#10B981] disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={handleReview}
+                    disabled={actionLoading}
+                  >
                     レビュー送信
                   </button>
                 </div>
@@ -380,8 +443,9 @@ export default function RequestDetailPage() {
 
               {allowApprove ? (
                 <button
-                  className="flex flex-1 items-center justify-center rounded-lg bg-[#34D399] px-8 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-[#10B981] md:flex-none"
+                  className="flex flex-1 items-center justify-center rounded-lg bg-[#34D399] px-8 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-[#10B981] disabled:cursor-not-allowed disabled:opacity-60 md:flex-none"
                   onClick={() => handleDecision("approve")}
+                  disabled={actionLoading}
                 >
                   依頼を承認する
                 </button>
@@ -396,27 +460,40 @@ export default function RequestDetailPage() {
 
               {isTutor && ["draft", "accepted"].includes(request.status) ? (
                 <button
-                  className="rounded-lg border border-rose-200 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+                  className="rounded-lg border border-rose-200 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={() => handleDecision("reject")}
+                  disabled={actionLoading}
                 >
                   却下
                 </button>
               ) : null}
 
               {isRequester && request.status === "accepted" ? (
-                <button className="rounded-lg bg-[#34D399] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#10B981]" onClick={handleCheckout}>
+                <button
+                  className="rounded-lg bg-[#34D399] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#10B981] disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={handleCheckout}
+                  disabled={actionLoading}
+                >
                   与信確保
                 </button>
               ) : null}
 
               {isRequester && request.status === "escrowed" ? (
-                <button className="rounded-lg bg-[#34D399] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#10B981]" onClick={handleComplete}>
+                <button
+                  className="rounded-lg bg-[#34D399] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#10B981] disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={handleComplete}
+                  disabled={actionLoading}
+                >
                   売上確定
                 </button>
               ) : null}
 
               {isRequester && ["accepted", "escrow_pending", "escrowed"].includes(request.status) ? (
-                <button className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50" onClick={handleCancel}>
+                <button
+                  className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={handleCancel}
+                  disabled={actionLoading}
+                >
                   キャンセル
                 </button>
               ) : null}

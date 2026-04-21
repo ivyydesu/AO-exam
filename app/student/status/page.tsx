@@ -85,52 +85,85 @@ export default function StudentStatusPage() {
   const doCheckout = async (requestId: string) => {
     setLoadingId(requestId);
     setError("");
-    const res = await fetch("/api/stripe/create-checkout-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
-    const data = await res.json().catch(() => ({}));
-    setLoadingId("");
-    if (!res.ok) {
-      setError(data.error ?? "Stripe与信開始に失敗");
-      return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+
+      const res = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Stripe与信開始に失敗");
+
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("Failed to start checkout", error);
+      setError(error instanceof Error ? error.message : "Stripe与信開始に失敗");
+    } finally {
+      setLoadingId("");
     }
-    window.location.href = data.url;
   };
 
   const doCapture = async (requestId: string) => {
     setLoadingId(requestId);
     setError("");
-    const res = await fetch("/api/stripe/capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
-    const data = await res.json().catch(() => ({}));
-    setLoadingId("");
-    if (!res.ok) {
-      setError(data.error ?? "売上確定に失敗");
-      return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+
+      const res = await fetch("/api/stripe/capture", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "売上確定に失敗");
+
+      await load();
+    } catch (error) {
+      console.error("Failed to capture payment", error);
+      setError(error instanceof Error ? error.message : "売上確定に失敗");
+    } finally {
+      setLoadingId("");
     }
-    await load();
   };
 
   const doCancel = async (requestId: string) => {
     setLoadingId(requestId);
     setError("");
-    const res = await fetch("/api/stripe/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId })
-    });
-    const data = await res.json().catch(() => ({}));
-    setLoadingId("");
-    if (!res.ok) {
-      setError(data.error ?? "キャンセルに失敗");
-      return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      if (!session?.access_token) throw new Error("ログインセッションが見つかりません");
+
+      const res = await fetch("/api/stripe/cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "キャンセルに失敗");
+
+      await load();
+    } catch (error) {
+      console.error("Failed to cancel request", error);
+      setError(error instanceof Error ? error.message : "キャンセルに失敗");
+    } finally {
+      setLoadingId("");
     }
-    await load();
   };
 
   const canShow = useMemo(() => Boolean(userId), [userId]);
