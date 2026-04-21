@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUserFromBearerToken } from "../../../../../lib/auth/requireUser";
+import { resolveAppUrl } from "../../../../../lib/auth/appUrl";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
 import { stripe } from "../../../../../lib/stripe";
 
 function getBaseUrl(req: NextRequest) {
-  const fromEnv = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
-  const proto = req.headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
+  return resolveAppUrl(req.nextUrl.origin);
 }
 
 export async function POST(req: NextRequest) {

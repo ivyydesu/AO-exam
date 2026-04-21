@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../../../../lib/supabase/server";
 import { exchangeLineCodeForProfile } from "../../../../../lib/line";
+import { resolveAppUrl } from "../../../../../lib/auth/appUrl";
 
 function withLineParam(path: string, value: string) {
   const separator = path.includes("?") ? "&" : "?";
@@ -11,13 +12,14 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams;
   const code = search.get("code");
   const state = search.get("state");
+  const baseUrl = resolveAppUrl(req.nextUrl.origin);
   const defaultReturnPath = "/profile/settings?tab=notifications";
   const pathFromState = state?.includes("::/profile/settings")
     ? state.split("::")[1] || defaultReturnPath
     : defaultReturnPath;
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL(withLineParam(pathFromState, "error_missing_params"), req.url));
+    return NextResponse.redirect(new URL(withLineParam(pathFromState, "error_missing_params"), baseUrl));
   }
 
   const supabaseAdmin = getSupabaseAdmin();
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
     .single();
 
   if (stateError || !stateRow) {
-    return NextResponse.redirect(new URL(withLineParam(pathFromState, "error_invalid_state"), req.url));
+    return NextResponse.redirect(new URL(withLineParam(pathFromState, "error_invalid_state"), baseUrl));
   }
 
   if (new Date(stateRow.expires_at).getTime() < Date.now()) {
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest) {
     const path = state.includes("::/profile/settings")
       ? state.split("::")[1] || defaultReturnPath
       : defaultReturnPath;
-    return NextResponse.redirect(new URL(withLineParam(path, "error_state_expired"), req.url));
+    return NextResponse.redirect(new URL(withLineParam(path, "error_state_expired"), baseUrl));
   }
 
   const returnPath = stateRow.state.includes("::/profile/settings")
@@ -54,12 +56,12 @@ export async function GET(req: NextRequest) {
     await supabaseAdmin.from("line_link_states").delete().eq("state", state);
 
     if (updateError) {
-      return NextResponse.redirect(new URL(withLineParam(returnPath, "error_save_failed"), req.url));
+      return NextResponse.redirect(new URL(withLineParam(returnPath, "error_save_failed"), baseUrl));
     }
 
-    return NextResponse.redirect(new URL(withLineParam(returnPath, "connected"), req.url));
+    return NextResponse.redirect(new URL(withLineParam(returnPath, "connected"), baseUrl));
   } catch {
     await supabaseAdmin.from("line_link_states").delete().eq("state", state);
-    return NextResponse.redirect(new URL(withLineParam(returnPath, "error_exchange_failed"), req.url));
+    return NextResponse.redirect(new URL(withLineParam(returnPath, "error_exchange_failed"), baseUrl));
   }
 }

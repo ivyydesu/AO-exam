@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAppUrl } from "../../../lib/auth/appUrl";
 function normalizeNextPath(raw: string | null) {
   if (!raw) return "/home";
   return raw.startsWith("/") ? raw : "/home";
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const nextPath = normalizeNextPath(url.searchParams.get("next"));
-  const baseUrl = `${url.protocol}//${url.host}`;
+  const baseUrl = resolveAppUrl(req.nextUrl.origin);
   const redirectUrl = new URL("/auth/login", baseUrl);
 
   if (!code) {
