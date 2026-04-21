@@ -7,7 +7,7 @@ export default function RequestsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/demo/request");
+    router.replace("/student/status");
   }, [router]);
 
   return null;

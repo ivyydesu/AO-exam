@@ -104,7 +104,7 @@ export default function CalendarPage() {
             <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-8">
               <ToolLink href="/calendar" label="スケジュール" icon="📅" active />
               <ToolLink href="/chat" label="メッセージ" icon="💬" />
-              <ToolLink href="/demo/request" label="申請状況" icon="📋" />
+              <ToolLink href="/student/status" label="申請状況" icon="📋" />
             </nav>
           </div>
         </aside>
