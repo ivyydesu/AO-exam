@@ -6,6 +6,7 @@
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` が漏洩していない（Vercel のみ）
 - [ ] `STRIPE_SECRET_KEY` が本番鍵 (`sk_live_...`)
 - [ ] `NEXT_PUBLIC_APP_URL` が本番ドメイン
+- [ ] LINE Developers の Login channel に `https://<本番ドメイン>/api/line/connect/callback` を Callback URL として登録
 - [ ] `PLATFORM_FEE_PERCENT` を運用値で固定
 - [ ] 通話系: `VIDEO_CALLS_ENABLED`, `NEXT_PUBLIC_VIDEO_CALLS_ENABLED`, `DAILY_API_KEY`, `NEXT_PUBLIC_DAILY_DOMAIN`
 - [ ] `INTERNAL_API_SECRET` を設定（内部API保護）

@@ -1,7 +1,10 @@
+import { getConfiguredAppUrl } from "./auth/appUrl";
+
 const LINE_AUTH_BASE = "https://access.line.me/oauth2/v2.1/authorize";
 const LINE_TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
 const LINE_PROFILE_URL = "https://api.line.me/v2/profile";
 const LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push";
+const LINE_CONNECT_CALLBACK_PATH = "/api/line/connect/callback";
 
 function requiredEnv(name: string) {
   const value = process.env[name];
@@ -9,11 +12,27 @@ function requiredEnv(name: string) {
   return value;
 }
 
+function trimTrailingSlashes(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function getLineRedirectUri() {
+  const appUrl = getConfiguredAppUrl();
+  if (appUrl) {
+    return `${appUrl}${LINE_CONNECT_CALLBACK_PATH}`;
+  }
+
+  const explicit = (process.env.LINE_LOGIN_REDIRECT_URI ?? "").trim();
+  if (explicit) return trimTrailingSlashes(explicit);
+
+  throw new Error("NEXT_PUBLIC_APP_URL or LINE_LOGIN_REDIRECT_URI is missing");
+}
+
 export function buildLineLoginUrl(state: string) {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: requiredEnv("LINE_LOGIN_CHANNEL_ID"),
-    redirect_uri: requiredEnv("LINE_LOGIN_REDIRECT_URI"),
+    redirect_uri: getLineRedirectUri(),
     state,
     scope: "profile openid"
   });
@@ -24,7 +43,7 @@ export async function exchangeLineCodeForProfile(code: string) {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    redirect_uri: requiredEnv("LINE_LOGIN_REDIRECT_URI"),
+    redirect_uri: getLineRedirectUri(),
     client_id: requiredEnv("LINE_LOGIN_CHANNEL_ID"),
     client_secret: requiredEnv("LINE_LOGIN_CHANNEL_SECRET")
   });

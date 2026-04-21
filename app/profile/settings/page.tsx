@@ -81,6 +81,7 @@ export default function ProfileSettingsPage() {
   const [loadingLine, setLoadingLine] = useState(false);
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [loadingEmailChange, setLoadingEmailChange] = useState(false);
+  const [isLineConnected, setIsLineConnected] = useState(false);
   const [emailChangeCooldown, setEmailChangeCooldown] = useState(0);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -143,7 +144,12 @@ export default function ProfileSettingsPage() {
   const hasExplicitRole = (raw: unknown) => String(raw ?? "").trim().length > 0;
 
   useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("tab");
+    const line = params.get("line");
+    if (line === "connected") {
+      setIsLineConnected(true);
+    }
     if (raw === "manage" || raw === "profile" || raw === "notifications" || raw === "login") {
       setTab(raw);
     } else {
@@ -183,13 +189,14 @@ export default function ProfileSettingsPage() {
         const profilePayload = await profileRes.json().catch(() => ({}));
         if (profileRes.ok && profilePayload.profile) {
           setForm((prev) => ({ ...prev, ...(profilePayload.profile as TutorForm) }));
+          setIsLineConnected((prev) => prev || Boolean(profilePayload.profile.line_user_id));
           if (hasExplicitRole(profilePayload.profile.role)) {
             setUserRole(normalizeRole(profilePayload.profile.role));
           }
         } else {
           const { data: fallbackProfile } = await supabase
             .from("profiles")
-            .select("full_name, school, role")
+            .select("full_name, school, role, line_user_id")
             .eq("id", sessionData.session.user.id)
             .maybeSingle();
 
@@ -199,6 +206,7 @@ export default function ProfileSettingsPage() {
               full_name: fallbackProfile.full_name ?? prev.full_name,
               school: fallbackProfile.school ?? prev.school
             }));
+            setIsLineConnected((prev) => prev || Boolean(fallbackProfile.line_user_id));
             if (hasExplicitRole(fallbackProfile.role)) {
               setUserRole(normalizeRole(fallbackProfile.role));
             }
@@ -903,8 +911,11 @@ export default function ProfileSettingsPage() {
                     className="rounded-lg border border-[#00B884] px-4 py-2 text-sm font-medium text-[#00B884] hover:bg-[#00B884]/5"
                     disabled={loadingLine}
                   >
-                    {loadingLine ? "LINE連携中..." : "LINEを連携する"}
+                    {loadingLine ? "LINE連携中..." : isLineConnected ? "LINEを再連携する" : "LINEを連携する"}
                   </button>
+                  {isLineConnected ? (
+                    <p className="mt-3 text-sm font-medium text-emerald-600">LINE連携が完了しています。</p>
+                  ) : null}
                 </div>
               </section>
 

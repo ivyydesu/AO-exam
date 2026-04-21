@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, role, school")
+      .select("id, full_name, role, school, line_user_id")
       .eq("id", user.id)
       .single();
 
@@ -101,6 +101,7 @@ export async function GET(req: NextRequest) {
           nickname: tutor?.nickname ?? "",
           role: profile.role,
           school: profile.school ?? "",
+          line_user_id: profile.line_user_id ?? null,
           avatar_url: tutor?.avatar_url ?? "",
           cover_url: tutor?.cover_url ?? "",
           university: tutor?.university ?? "",

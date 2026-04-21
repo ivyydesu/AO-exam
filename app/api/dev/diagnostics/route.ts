@@ -14,13 +14,17 @@ export async function GET(req: NextRequest) {
   }
   const supabaseUrl = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim();
+  const lineLoginRedirectUri = (process.env.LINE_LOGIN_REDIRECT_URI ?? "").trim();
   const env = {
     NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()),
     SUPABASE_SERVICE_ROLE_KEY: Boolean(serviceKey),
+    NEXT_PUBLIC_APP_URL: Boolean(appUrl),
     LINE_LOGIN_CHANNEL_ID: Boolean(process.env.LINE_LOGIN_CHANNEL_ID),
     LINE_LOGIN_CHANNEL_SECRET: Boolean(process.env.LINE_LOGIN_CHANNEL_SECRET),
-    LINE_LOGIN_REDIRECT_URI: Boolean(process.env.LINE_LOGIN_REDIRECT_URI),
+    LINE_LOGIN_REDIRECT_URI: Boolean(lineLoginRedirectUri),
+    LINE_REDIRECT_URI_RESOLVABLE: Boolean(appUrl || lineLoginRedirectUri),
     LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: Boolean(process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN),
     INTERNAL_API_SECRET: Boolean(process.env.INTERNAL_API_SECRET)
   };
