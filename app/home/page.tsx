@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import BrandLogo from "../../components/BrandLogo";
 
 type Mentor = {
@@ -59,6 +59,7 @@ type FeaturedTutorApiItem = {
 };
 
 const fallbackAvatar = "/avatars/user-default-gray.svg";
+const PAGE_SIZE = 10;
 
 const popularTags = [
   { label: "#ICT", cls: "bg-blue-50 text-blue-600" },
@@ -109,6 +110,47 @@ function pickTutorProfile(value: FeaturedTutorApiItem["tutor_profiles"]) {
   return value;
 }
 
+function mapTutorItem(item: FeaturedTutorApiItem): Mentor {
+  const tutorProfile = pickTutorProfile(item.tutor_profiles);
+  const nickname = (item.nickname ?? "").trim();
+  const fullName = (item.full_name ?? "").trim();
+  const fallbackName = (item.name ?? "").trim();
+  const universityRaw = (tutorProfile?.university || item.university || item.school || "").trim();
+  const departmentRaw = (tutorProfile?.department || item.department || "").trim();
+  const gradeRaw = (tutorProfile?.grade || item.grade || "").trim();
+  const seminarRaw = (tutorProfile?.seminar || item.seminar || "").trim();
+  const researchThemeRaw = (tutorProfile?.research_theme || item.researchTheme || "").trim();
+  const coachingExperienceRaw = (tutorProfile?.coaching_experience || item.coachingExperience || "").trim();
+  const avatarRaw = (item.avatar || tutorProfile?.avatar_url || "").trim();
+  return {
+    id: item.id,
+    name: nickname || fullName || fallbackName || "先輩メンター",
+    university: universityRaw || "未設定",
+    department: departmentRaw || "未設定",
+    grade: gradeRaw || "未設定",
+    seminar: seminarRaw || "未設定",
+    theme: researchThemeRaw || "未設定",
+    tags: toTags(departmentRaw, seminarRaw, researchThemeRaw),
+    rating: Number(item.rating ?? 0),
+    reviews: Number(item.reviews ?? 0),
+    verified: Boolean(item.verified),
+    experience: coachingExperienceRaw || "未設定",
+    avatar: avatarRaw || fallbackAvatar
+  };
+}
+
+function appendUniqueTutors(current: Mentor[], incoming: Mentor[]) {
+  if (incoming.length === 0) return current;
+  const seen = new Set(current.map((item) => item.id));
+  const next = [...current];
+  incoming.forEach((item) => {
+    if (seen.has(item.id)) return;
+    seen.add(item.id);
+    next.push(item);
+  });
+  return next;
+}
+
 export default function HomePage() {
   const [keyword, setKeyword] = useState("");
   const [seminar, setSeminar] = useState("");
@@ -116,50 +158,37 @@ export default function HomePage() {
   const [grade, setGrade] = useState("指定なし");
   const [sort, setSort] = useState("おすすめ順");
   const [selectedTag, setSelectedTag] = useState<string>("");
-  const [visibleCount, setVisibleCount] = useState(4);
-  const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [tutors, setTutors] = useState<Mentor[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [loadingMentors, setLoadingMentors] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [mentorError, setMentorError] = useState<string | null>(null);
+
+  const loadTutorPage = useCallback(async (nextOffset: number) => {
+    const params = new URLSearchParams({
+      offset: String(nextOffset),
+      limit: String(PAGE_SIZE)
+    });
+    const res = await fetch(`/api/tutors/featured?${params.toString()}`, { cache: "no-store" });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload?.error ?? "先輩一覧の取得に失敗しました");
+    }
+    return ((payload?.items ?? []) as FeaturedTutorApiItem[]).map(mapTutorItem);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
       setLoadingMentors(true);
       setMentorError(null);
+      setHasMore(true);
+      setOffset(0);
       try {
-        const res = await fetch("/api/tutors/featured", { cache: "no-store" });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(payload?.error ?? "先輩一覧の取得に失敗しました");
-        }
-        const items = ((payload?.items ?? []) as FeaturedTutorApiItem[]).map((item) => {
-          const tutorProfile = pickTutorProfile(item.tutor_profiles);
-          const nickname = (item.nickname ?? "").trim();
-          const fullName = (item.full_name ?? "").trim();
-          const fallbackName = (item.name ?? "").trim();
-          const universityRaw = (tutorProfile?.university || item.university || item.school || "").trim();
-          const departmentRaw = (tutorProfile?.department || item.department || "").trim();
-          const gradeRaw = (tutorProfile?.grade || item.grade || "").trim();
-          const seminarRaw = (tutorProfile?.seminar || item.seminar || "").trim();
-          const researchThemeRaw = (tutorProfile?.research_theme || item.researchTheme || "").trim();
-          const coachingExperienceRaw = (tutorProfile?.coaching_experience || item.coachingExperience || "").trim();
-          const avatarRaw = (item.avatar || tutorProfile?.avatar_url || "").trim();
-          return {
-            id: item.id,
-            name: nickname || fullName || fallbackName || "先輩メンター",
-            university: universityRaw || "未設定",
-            department: departmentRaw || "未設定",
-            grade: gradeRaw || "未設定",
-            seminar: seminarRaw || "未設定",
-            theme: researchThemeRaw || "未設定",
-            tags: toTags(departmentRaw, seminarRaw, researchThemeRaw),
-            rating: Number(item.rating ?? 0),
-            reviews: Number(item.reviews ?? 0),
-            verified: Boolean(item.verified),
-            experience: coachingExperienceRaw || "未設定",
-            avatar: avatarRaw || fallbackAvatar
-          };
-        });
-        setMentors(items);
+        const items = await loadTutorPage(0);
+        setTutors(items);
+        setOffset(items.length);
+        setHasMore(items.length === PAGE_SIZE);
       } catch (error) {
         setMentorError(error instanceof Error ? error.message : "先輩一覧の取得に失敗しました");
       } finally {
@@ -167,7 +196,25 @@ export default function HomePage() {
       }
     };
     void load();
-  }, []);
+  }, [loadTutorPage]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (loadingMentors || isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    setMentorError(null);
+    try {
+      const items = await loadTutorPage(offset);
+      setTutors((prev) => appendUniqueTutors(prev, items));
+      setOffset((prev) => prev + items.length);
+      if (items.length < PAGE_SIZE) {
+        setHasMore(false);
+      }
+    } catch (error) {
+      setMentorError(error instanceof Error ? error.message : "先輩一覧の取得に失敗しました");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [hasMore, isLoadingMore, loadTutorPage, loadingMentors, offset]);
 
   const activeFilters = useMemo(() => {
     return [
@@ -185,7 +232,7 @@ export default function HomePage() {
     const s = seminar.toLowerCase();
     const u = school.toLowerCase();
 
-    const base = mentors.filter((m) => {
+    const base = tutors.filter((m) => {
       const text = `${m.name} ${m.university} ${m.department} ${m.seminar} ${m.theme} ${m.tags.join(" ")}`.toLowerCase();
       const k = !q || text.includes(q);
       const se = !s || m.seminar.toLowerCase().includes(s);
@@ -197,8 +244,7 @@ export default function HomePage() {
 
     if (sort === "評価が高い順" || sort === "おすすめ順") return [...base].sort((a, b) => b.rating - a.rating);
     return base;
-  }, [keyword, seminar, school, grade, sort, selectedTag, mentors]);
-  const visibleMentors = filtered.slice(0, visibleCount);
+  }, [keyword, seminar, school, grade, sort, selectedTag, tutors]);
 
   return (
     <div className="relative left-1/2 w-dvw max-w-[100dvw] -translate-x-1/2 overflow-x-hidden">
@@ -292,7 +338,6 @@ export default function HomePage() {
                       setSchool("");
                       setGrade("指定なし");
                       setSelectedTag("");
-                      setVisibleCount(4);
                     }}
                   >
                     クリア
@@ -342,7 +387,6 @@ export default function HomePage() {
                     className={`rounded-full px-4 py-2 text-sm font-medium transition-colors hover:opacity-85 ${selectedTag === "" ? "bg-[#10b981] text-white" : "bg-gray-100 text-gray-600"}`}
                     onClick={() => {
                       setSelectedTag("");
-                      setVisibleCount(4);
                     }}
                   >
                     すべて
@@ -354,7 +398,6 @@ export default function HomePage() {
                       className={`rounded-full px-4 py-2 text-sm font-medium transition-colors hover:opacity-85 ${selectedTag === tag.label ? "bg-[#10b981] text-white" : tag.cls}`}
                       onClick={() => {
                         setSelectedTag(tag.label);
-                        setVisibleCount(4);
                       }}
                     >
                       {tag.label}
@@ -390,10 +433,10 @@ export default function HomePage() {
               {loadingMentors ? <div className="rounded-2xl border border-gray-100 bg-white p-6 text-sm text-gray-600">先輩一覧を読み込み中です...</div> : null}
               {mentorError ? <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">{mentorError}</div> : null}
 
-              {!loadingMentors && !mentorError ? (
+              {!loadingMentors ? (
                 <>
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                    {visibleMentors.map((mentor) => (
+                    {filtered.map((mentor) => (
                       <article key={mentor.id} className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05),0_4px_6px_-2px_rgba(0,0,0,0.025)] transition-all duration-300 hover:shadow-xl">
                         <div className="mb-4 flex items-start gap-4">
                           <div className="relative shrink-0">
@@ -440,7 +483,6 @@ export default function HomePage() {
                               className={`rounded-md border px-2.5 py-1 text-xs ${selectedTag === tag ? "border-[#10b981] bg-[#10b981]/10 text-[#10b981]" : "border-gray-200 bg-gray-100 text-gray-600"}`}
                               onClick={() => {
                                 setSelectedTag(tag);
-                                setVisibleCount(4);
                               }}
                             >
                               {tag}
@@ -461,19 +503,21 @@ export default function HomePage() {
                     ))}
                   </div>
 
-                  {visibleMentors.length === 0 ? (
+                  {filtered.length === 0 ? (
                     <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">一致する先輩が見つかりませんでした。</div>
                   ) : null}
 
-                  <div className="mt-12 text-center">
-                    <button
-                      className="rounded-xl border border-gray-200 bg-white px-8 py-3 font-bold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => setVisibleCount((prev) => prev + 4)}
-                      disabled={visibleCount >= filtered.length}
-                    >
-                      もっと見る
-                    </button>
-                  </div>
+                  {hasMore ? (
+                    <div className="mt-12 text-center">
+                      <button
+                        className="rounded-xl border border-gray-200 bg-white px-8 py-3 font-bold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={handleLoadMore}
+                        disabled={isLoadingMore}
+                      >
+                        {isLoadingMore ? "読み込み中..." : "もっと見る"}
+                      </button>
+                    </div>
+                  ) : null}
                 </>
               ) : null}
             </div>
