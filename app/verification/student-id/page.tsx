@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
+const MAX_IMAGE_BYTES = 3_145_728;
+const FILE_SIZE_ERROR_MESSAGE = "ファイルサイズが大きすぎます。3MB以下の画像を選択してください。";
+
 type Verification = {
   id: string;
   status: "pending" | "approved" | "rejected";
@@ -26,6 +29,27 @@ export default function StudentIdVerificationPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const isOverSizeLimit = (file: File | null) => Boolean(file && file.size > MAX_IMAGE_BYTES);
+
+  const handleImageSelect = (
+    file: File | null,
+    setter: (value: File | null) => void
+  ) => {
+    if (!file) {
+      setter(null);
+      return;
+    }
+    if (isOverSizeLimit(file)) {
+      setter(null);
+      setError(FILE_SIZE_ERROR_MESSAGE);
+      setNotice(null);
+      setLoading(false);
+      return;
+    }
+    setter(file);
+    setError((prev) => (prev === FILE_SIZE_ERROR_MESSAGE ? null : prev));
+  };
 
   const resolveApiError = async (res: Response, fallback: string) => {
     const text = await res.text().catch(() => "");
@@ -82,14 +106,18 @@ export default function StudentIdVerificationPage() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (loading) {
+      setLoading(false);
+    }
     setError(null);
     setNotice(null);
     if (!frontFile || !backFile) {
       setError("学生証の表・裏画像を選択してください");
       return;
     }
-    if (frontFile.size > 3 * 1024 * 1024 || backFile.size > 3 * 1024 * 1024) {
-      setError("ファイルサイズは表・裏ともに3MB以下にしてください");
+    if (isOverSizeLimit(frontFile) || isOverSizeLimit(backFile)) {
+      setError(FILE_SIZE_ERROR_MESSAGE);
+      setLoading(false);
       return;
     }
     if (!/^\d{4}$/.test(admissionYear) || !/^\d{4}$/.test(graduationYear)) {
@@ -189,7 +217,7 @@ export default function StudentIdVerificationPage() {
               className="input"
               type="file"
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
-              onChange={(e) => setFrontFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => handleImageSelect(e.target.files?.[0] ?? null, setFrontFile)}
             />
           </label>
           <label className="grid gap-2">
@@ -198,7 +226,7 @@ export default function StudentIdVerificationPage() {
               className="input"
               type="file"
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
-              onChange={(e) => setBackFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => handleImageSelect(e.target.files?.[0] ?? null, setBackFile)}
             />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">

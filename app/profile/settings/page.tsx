@@ -40,6 +40,9 @@ type VerificationStatus = {
   graduation_year: number | null;
 };
 
+const MAX_IMAGE_BYTES = 3_145_728;
+const FILE_SIZE_ERROR_MESSAGE = "ファイルサイズが大きすぎます。3MB以下の画像を選択してください。";
+
 const initialForm: TutorForm = {
   full_name: "",
   nickname: "",
@@ -262,6 +265,24 @@ export default function ProfileSettingsPage() {
     setError(null);
   };
 
+  const isAvatarTooLarge = (file: File | null) => Boolean(file && file.size > MAX_IMAGE_BYTES);
+
+  const handleAvatarSelect = (file: File | null) => {
+    if (!file) {
+      setAvatarFile(null);
+      return;
+    }
+    if (isAvatarTooLarge(file)) {
+      setAvatarFile(null);
+      setError(FILE_SIZE_ERROR_MESSAGE);
+      setNotice(null);
+      setLoadingProfile(false);
+      return;
+    }
+    setAvatarFile(file);
+    setError((prev) => (prev === FILE_SIZE_ERROR_MESSAGE ? null : prev));
+  };
+
   const authToken = async () => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error("Supabase client is not initialized");
@@ -272,9 +293,17 @@ export default function ProfileSettingsPage() {
 
   const onSaveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (loadingProfile) {
+      setLoadingProfile(false);
+    }
     setLoadingProfile(true);
     setError(null);
     setNotice(null);
+    if (isAvatarTooLarge(avatarFile)) {
+      setError(FILE_SIZE_ERROR_MESSAGE);
+      setLoadingProfile(false);
+      return;
+    }
     try {
       const token = await authToken();
       const fd = new FormData();
@@ -681,7 +710,7 @@ export default function ProfileSettingsPage() {
                         type="file"
                         className="hidden"
                         accept="image/jpeg,image/png,image/webp"
-                        onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) => handleAvatarSelect(e.target.files?.[0] ?? null)}
                       />
                     </label>
                   </div>
@@ -711,7 +740,7 @@ export default function ProfileSettingsPage() {
                         type="file"
                         className="hidden"
                         accept="image/jpeg,image/png,image/webp"
-                        onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) => handleAvatarSelect(e.target.files?.[0] ?? null)}
                       />
                     </label>
 
