@@ -11,6 +11,7 @@ type ChecklistItem = {
   label: string;
   completed: boolean;
   href: string;
+  required?: boolean;
 };
 
 function isFilled(value: unknown) {
@@ -51,6 +52,17 @@ function getFallbackPosition(): DragPosition {
   };
 }
 
+async function fetchStripeTaskStatus(accessToken: string): Promise<boolean> {
+  const response = await fetch("/api/stripe/connect/status", {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Stripe口座状態の取得に失敗しました");
+  }
+  return Boolean(payload.connected && payload.chargesEnabled && payload.payoutsEnabled);
+}
+
 export default function OnboardingChecklist() {
   const pathname = usePathname() || "";
   const router = useRouter();
@@ -83,8 +95,10 @@ export default function OnboardingChecklist() {
           return;
         }
 
-        const { data: sessionData } = await supabase.auth.getSession();
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
         const user = sessionData.session?.user;
+        const accessToken = sessionData.session?.access_token;
         if (!user?.id) {
           if (mounted) {
             setRole(null);
@@ -95,7 +109,7 @@ export default function OnboardingChecklist() {
 
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role, full_name, school, line_user_id")
+          .select("role, full_name, school, line_user_id, stripe_account_id")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -126,18 +140,22 @@ export default function OnboardingChecklist() {
           return;
         }
 
-        const [{ data: tutorProfile }, { data: verification }] = await Promise.all([
-          supabase
-            .from("tutor_profiles")
-            .select("nickname, department, grade, research_theme, bio")
-            .eq("user_id", user.id)
-            .maybeSingle(),
-          supabase
-            .from("tutor_verifications")
-            .select("status")
-            .eq("user_id", user.id)
-            .maybeSingle()
-        ]);
+        const [{ data: tutorProfile, error: tutorProfileError }, { data: verification, error: verificationError }] =
+          await Promise.all([
+            supabase
+              .from("tutor_profiles")
+              .select("nickname, department, grade, research_theme, bio")
+              .eq("user_id", user.id)
+              .maybeSingle(),
+            supabase
+              .from("tutor_verifications")
+              .select("status")
+              .eq("user_id", user.id)
+              .maybeSingle()
+          ]);
+
+        if (tutorProfileError) throw tutorProfileError;
+        if (verificationError) throw verificationError;
 
         if (!mounted) return;
 
@@ -152,6 +170,17 @@ export default function OnboardingChecklist() {
 
         const lineDone = isFilled(profile?.line_user_id);
         const verificationDone = verification?.status === "pending" || verification?.status === "approved";
+        let stripeDone = false;
+        if (accessToken) {
+          try {
+            stripeDone = await fetchStripeTaskStatus(accessToken);
+          } catch (error) {
+            console.error("[OnboardingChecklist] failed to fetch Stripe task status", error);
+            stripeDone = isFilled(profile?.stripe_account_id);
+          }
+        } else {
+          stripeDone = isFilled(profile?.stripe_account_id);
+        }
 
         setRole("tutor");
         setItems([
@@ -159,21 +188,36 @@ export default function OnboardingChecklist() {
             id: "tutor-profile",
             label: "プロフィール設定の完了",
             completed: profileDone,
-            href: "/profile/settings?tab=profile"
+            href: "/profile/settings?tab=profile",
+            required: true
           },
           {
             id: "line-connect",
             label: "LINE連携の完了",
             completed: lineDone,
-            href: "/profile/settings?tab=notifications"
+            href: "/profile/settings?tab=notifications",
+            required: false
           },
           {
             id: "student-verification",
             label: "学生証認証の登録",
             completed: verificationDone,
-            href: "/verification/student-id"
+            href: "/verification/student-id",
+            required: true
+          },
+          {
+            id: "stripe-connect",
+            label: "Stripe口座登録の完了",
+            completed: stripeDone,
+            href: "/profile/payouts",
+            required: true
           }
         ]);
+      } catch (error) {
+        console.error("[OnboardingChecklist] failed to load checklist", error);
+        if (mounted) {
+          setItems([]);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -276,8 +320,9 @@ export default function OnboardingChecklist() {
   if (hiddenOn || role === "admin" || role === null) return null;
   if (!hydrated || !position) return null;
 
-  const allItemsCompleted = !loading && items.length > 0 && items.every((item) => item.completed);
-  if (allItemsCompleted) return null;
+  const requiredItems = items.filter((item) => item.required !== false);
+  const allRequiredCompleted = !loading && requiredItems.length > 0 && requiredItems.every((item) => item.completed);
+  if (allRequiredCompleted) return null;
 
   const doneCount = items.filter((item) => item.completed).length;
 
