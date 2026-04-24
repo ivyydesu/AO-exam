@@ -7,6 +7,14 @@ import { writeSecurityAudit } from "../../../../lib/security/audit";
 import { getRequestMeta } from "../../../../lib/security/requestMeta";
 import sharp from "sharp";
 
+const STUDENT_IDS_BUCKET = "student-ids";
+const OPTIONAL_VERIFICATION_COLUMNS = [
+  "student_id_front_image_path",
+  "student_id_back_image_path",
+  "admission_year",
+  "graduation_year"
+] as const;
+
 function isMissingVerificationTable(message: string) {
   const lower = message.toLowerCase();
   return (
@@ -15,12 +23,55 @@ function isMissingVerificationTable(message: string) {
   );
 }
 
+function isMissingColumnError(message: string, column: string) {
+  return message.includes(`column "${column}"`) || message.includes(`column ${column}`) || message.includes(`'${column}'`);
+}
+
+async function upsertVerificationWithFallback(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  payload: Record<string, unknown>
+) {
+  const droppedColumns = new Set<string>();
+  const nextPayload: Record<string, unknown> = { ...payload };
+  let lastError: { message: string } | null = null;
+
+  for (let i = 0; i < OPTIONAL_VERIFICATION_COLUMNS.length + 2; i += 1) {
+    const { error } = await supabaseAdmin
+      .from("tutor_verifications")
+      .upsert(nextPayload, { onConflict: "user_id" });
+
+    if (!error) {
+      return { error: null, droppedColumns };
+    }
+
+    lastError = error;
+    const missing = OPTIONAL_VERIFICATION_COLUMNS.find(
+      (column) => column in nextPayload && isMissingColumnError(error.message, column)
+    );
+    if (!missing) break;
+
+    delete nextPayload[missing];
+    droppedColumns.add(missing);
+  }
+
+  return { error: lastError, droppedColumns };
+}
+
 async function ensureStudentIdsBucket() {
   const supabaseAdmin = getSupabaseAdmin();
-  const { error: createError } = await supabaseAdmin.storage.createBucket("student-ids", {
+  const { data: buckets, error: listError } = await supabaseAdmin.storage.listBuckets();
+  if (listError) {
+    throw new Error(`Bucket list failed: ${listError.message}`);
+  }
+  if ((buckets ?? []).some((bucket) => bucket.id === STUDENT_IDS_BUCKET)) {
+    return;
+  }
+
+  const { error: createError } = await supabaseAdmin.storage.createBucket(STUDENT_IDS_BUCKET, {
     public: false
   });
-  if (createError && !createError.message.toLowerCase().includes("already")) {
+  const alreadyExists = createError?.message ? /already|exists/i.test(createError.message) : false;
+  if (createError && !alreadyExists) {
     throw new Error(`Bucket create failed: ${createError.message}`);
   }
 }
@@ -195,13 +246,13 @@ export async function POST(req: NextRequest) {
 
     const [frontUpload, backUpload] = await Promise.all([
       supabaseAdmin.storage
-        .from("student-ids")
+        .from(STUDENT_IDS_BUCKET)
         .upload(frontPath, frontBuffer, {
           contentType: frontNormalized.contentType,
           upsert: false
         }),
       supabaseAdmin.storage
-        .from("student-ids")
+        .from(STUDENT_IDS_BUCKET)
         .upload(backPath, backBuffer, {
           contentType: backNormalized.contentType,
           upsert: false
@@ -214,7 +265,7 @@ export async function POST(req: NextRequest) {
       if (!frontUpload.error) removeTargets.push(frontPath);
       if (!backUpload.error) removeTargets.push(backPath);
       if (removeTargets.length > 0) {
-        await supabaseAdmin.storage.from("student-ids").remove(removeTargets);
+        await supabaseAdmin.storage.from(STUDENT_IDS_BUCKET).remove(removeTargets);
       }
       return NextResponse.json(
         { error: frontUpload.error?.message ?? backUpload.error?.message ?? "アップロードに失敗しました" },
@@ -222,26 +273,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { error: upsertError } = await supabaseAdmin
-      .from("tutor_verifications")
-      .upsert(
-        {
-          user_id: user.id,
-          student_id_image_path: frontPath,
-          student_id_front_image_path: frontPath,
-          student_id_back_image_path: backPath,
-          admission_year: Number(admissionYear),
-          graduation_year: Number(graduationYear),
-          status: "pending",
-          reason: null,
-          reviewed_by: null,
-          reviewed_at: null,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: "user_id" }
-      );
+    const upsertPayload = {
+      user_id: user.id,
+      student_id_image_path: frontPath,
+      student_id_front_image_path: frontPath,
+      student_id_back_image_path: backPath,
+      admission_year: Number(admissionYear),
+      graduation_year: Number(graduationYear),
+      status: "pending",
+      reason: null,
+      reviewed_by: null,
+      reviewed_at: null,
+      updated_at: new Date().toISOString()
+    };
+    const upsertResult = await upsertVerificationWithFallback(supabaseAdmin, upsertPayload);
+    const upsertError = upsertResult.error;
 
     if (upsertError) {
+      await supabaseAdmin.storage.from(STUDENT_IDS_BUCKET).remove([frontPath, backPath]).catch(() => undefined);
       if (isMissingVerificationTable(upsertError.message)) {
         return NextResponse.json(
           {
@@ -252,6 +301,10 @@ export async function POST(req: NextRequest) {
         );
       }
       return NextResponse.json({ error: upsertError.message }, { status: 400 });
+    }
+
+    if (upsertResult.droppedColumns.has("student_id_back_image_path")) {
+      await supabaseAdmin.storage.from(STUDENT_IDS_BUCKET).remove([backPath]).catch(() => undefined);
     }
 
     await writeSecurityAudit(supabaseAdmin, {

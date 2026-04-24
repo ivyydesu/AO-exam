@@ -27,35 +27,53 @@ export default function StudentIdVerificationPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const loadStatus = async () => {
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setError("Supabaseが初期化されていません");
-      return;
+  const resolveApiError = async (res: Response, fallback: string) => {
+    const text = await res.text().catch(() => "");
+    if (!text) return fallback;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown };
+      if (typeof parsed.error === "string" && parsed.error.trim()) {
+        return parsed.error;
+      }
+    } catch {
+      // 非JSONのエラーレスポンスは本文をそのまま表示する。
     }
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setError("ログインが必要です");
-      return;
-    }
-    const token = sessionData.session.access_token;
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", sessionData.session.user.id).maybeSingle();
-    const isTutor = profile?.role === "tutor";
-    setAllowed(isTutor);
-    if (!isTutor) {
-      router.replace("/profile/settings?tab=manage");
-      return;
-    }
+    return text.trim() || fallback;
+  };
 
-    const res = await fetch("/api/verification/student-id", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const payload = await res.json();
-    if (!res.ok) {
-      setError(payload.error ?? "状態取得に失敗しました");
-      return;
+  const loadStatus = async () => {
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setError("Supabaseが初期化されていません");
+        return;
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        setError("ログインが必要です");
+        return;
+      }
+      const token = sessionData.session.access_token;
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", sessionData.session.user.id).maybeSingle();
+      const isTutor = profile?.role === "tutor";
+      setAllowed(isTutor);
+      if (!isTutor) {
+        router.replace("/profile/settings?tab=manage");
+        return;
+      }
+
+      const res = await fetch("/api/verification/student-id", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        setError(await resolveApiError(res, "状態取得に失敗しました"));
+        return;
+      }
+      const payload = (await res.json().catch(() => null)) as { verification?: Verification | null } | null;
+      setVerification(payload?.verification ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "状態取得に失敗しました");
     }
-    setVerification(payload.verification);
   };
 
   useEffect(() => {
@@ -100,19 +118,22 @@ export default function StudentIdVerificationPage() {
 
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), 30_000);
-      const res = await fetch("/api/verification/student-id", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${sessionData.session.access_token}`
-        },
-        body: formData,
-        signal: controller.signal
-      });
-      window.clearTimeout(timeoutId);
+      let res: Response;
+      try {
+        res = await fetch("/api/verification/student-id", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${sessionData.session.access_token}`
+          },
+          body: formData,
+          signal: controller.signal
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
 
-      const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(payload.error ?? "申請に失敗しました");
+        setError(await resolveApiError(res, "申請に失敗しました"));
         return;
       }
       setNotice("学生証を提出しました。審査完了までお待ちください。");
