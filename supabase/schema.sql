@@ -60,6 +60,7 @@ create table if not exists tutor_profiles (
   avatar_url text,
   cover_url text,
   university text not null default '',
+  accepted_school text not null default '',
   department text not null default '',
   seminar text not null default '',
   grade text not null default '',
@@ -76,6 +77,8 @@ alter table tutor_profiles
 add column if not exists cover_url text;
 alter table tutor_profiles
 add column if not exists nickname text not null default '';
+alter table tutor_profiles
+add column if not exists accepted_school text not null default '';
 
 -- Per-user notification preferences
 create table if not exists notification_settings (

@@ -9,13 +9,14 @@ export const revalidate = 0;
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const OPTIONAL_TUTOR_COLUMNS = ["is_published", "is_public", "cover_url", "nickname"] as const;
+const OPTIONAL_TUTOR_COLUMNS = ["is_published", "is_public", "cover_url", "nickname", "accepted_school"] as const;
 
 type TutorProfileRow = {
   nickname?: string;
   avatar_url?: string | null;
   cover_url?: string | null;
   university?: string;
+  accepted_school?: string;
   department?: string;
   seminar?: string;
   grade?: string;
@@ -26,7 +27,8 @@ type TutorProfileRow = {
   is_public?: boolean;
 };
 
-const TUTOR_SELECT_BASE = "nickname, avatar_url, cover_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published, is_public";
+const TUTOR_SELECT_BASE =
+  "nickname, avatar_url, cover_url, university, accepted_school, department, seminar, grade, research_theme, coaching_experience, bio, is_published, is_public";
 
 function isMissingColumnError(message: string, column: string) {
   return message.includes(`column "${column}"`) || message.includes(`column ${column}`) || message.includes(`'${column}'`);
@@ -105,6 +107,7 @@ export async function GET(req: NextRequest) {
           avatar_url: tutor?.avatar_url ?? "",
           cover_url: tutor?.cover_url ?? "",
           university: tutor?.university ?? "",
+          accepted_school: tutor?.accepted_school ?? "",
           department: tutor?.department ?? "",
           seminar: tutor?.seminar ?? "",
           grade: tutor?.grade ?? "",
@@ -146,9 +149,10 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const fullName = sanitizePlainText(String(form.get("full_name") ?? ""), 80);
     const nickname = sanitizePlainText(String(form.get("nickname") ?? ""), 40);
-    const school = sanitizePlainText(String(form.get("school") ?? ""), 120);
+    const schoolInput = sanitizePlainText(String(form.get("school") ?? ""), 120);
     const universityInput = sanitizePlainText(String(form.get("university") ?? ""), 120);
-    const university = universityInput || school;
+    const university = universityInput || schoolInput;
+    const acceptedSchool = sanitizePlainText(String(form.get("accepted_school") ?? ""), 240);
     const department = sanitizePlainText(String(form.get("department") ?? ""), 120);
     const seminar = sanitizePlainText(String(form.get("seminar") ?? ""), 120);
     const grade = sanitizePlainText(String(form.get("grade") ?? ""), 20);
@@ -204,7 +208,7 @@ export async function POST(req: NextRequest) {
 
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
-      .update({ full_name: fullName, school })
+      .update({ full_name: fullName, school: university })
       .eq("id", user.id);
 
     if (profileError) {
@@ -215,6 +219,7 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       nickname,
       university,
+      accepted_school: acceptedSchool,
       department,
       seminar,
       grade,
@@ -263,8 +268,9 @@ export async function POST(req: NextRequest) {
       profile: {
         full_name: fullName,
         nickname: latestProfile?.nickname ?? nickname,
-        school,
+        school: university,
         university: latestProfile?.university ?? university,
+        accepted_school: latestProfile?.accepted_school ?? acceptedSchool,
         department: latestProfile?.department ?? department,
         seminar: latestProfile?.seminar ?? seminar,
         grade: latestProfile?.grade ?? grade,

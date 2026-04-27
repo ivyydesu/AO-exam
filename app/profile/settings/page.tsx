@@ -22,6 +22,8 @@ type TutorForm = {
   full_name: string;
   nickname: string;
   school: string;
+  university: string;
+  accepted_school: string;
   avatar_url: string;
   cover_url: string;
   department: string;
@@ -47,6 +49,8 @@ const initialForm: TutorForm = {
   full_name: "",
   nickname: "",
   school: "",
+  university: "",
+  accepted_school: "",
   avatar_url: "",
   cover_url: "",
   department: "",
@@ -207,7 +211,8 @@ export default function ProfileSettingsPage() {
             setForm((prev) => ({
               ...prev,
               full_name: fallbackProfile.full_name ?? prev.full_name,
-              school: fallbackProfile.school ?? prev.school
+              school: fallbackProfile.school ?? prev.school,
+              university: fallbackProfile.school ?? prev.university
             }));
             setIsLineConnected((prev) => prev || Boolean(fallbackProfile.line_user_id));
             if (hasExplicitRole(fallbackProfile.role)) {
@@ -309,8 +314,9 @@ export default function ProfileSettingsPage() {
       const fd = new FormData();
       fd.append("full_name", form.full_name);
       fd.append("nickname", form.nickname);
-      fd.append("school", form.school);
-      fd.append("university", form.school);
+      fd.append("school", form.university);
+      fd.append("university", form.university);
+      fd.append("accepted_school", form.accepted_school);
       fd.append("department", form.department);
       fd.append("seminar", form.seminar);
       fd.append("grade", form.grade);
@@ -728,7 +734,8 @@ export default function ProfileSettingsPage() {
                         </span>
                       )}
                     </h2>
-                    <p className="mt-1 text-sm text-[#6B7280]">{form.school || "未設定"}</p>
+                    <p className="mt-1 text-sm text-[#6B7280]">{form.university || "在籍大学未設定"}</p>
+                    <p className="mt-1 text-sm text-[#6B7280]">{form.accepted_school || "合格校未設定"}</p>
                   </div>
                   </div>
 
@@ -786,7 +793,20 @@ export default function ProfileSettingsPage() {
                     />
                     <p className="-mt-1 pl-1 text-xs text-[#6B7280]">※ 実際に他のユーザーに表示される名前です</p>
                   </label>
-                  <ProfileInput inputId="tutor-school-input" label="学校名" value={form.school} onChange={(v) => setForm({ ...form, school: v })} />
+                  <ProfileInput
+                    inputId="tutor-university-input"
+                    label="在籍大学"
+                    value={form.university}
+                    onChange={(v) => setForm({ ...form, university: v })}
+                    placeholder="〇〇大学"
+                  />
+                  <ProfileInput
+                    inputId="tutor-accepted-school-input"
+                    label="合格校"
+                    value={form.accepted_school}
+                    onChange={(v) => setForm({ ...form, accepted_school: v })}
+                    placeholder="〇〇大学（複数ある場合はカンマ区切り）"
+                  />
                   <ProfileInput label="学部学科" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
                   <ProfileInput label="ゼミ" value={form.seminar} onChange={(v) => setForm({ ...form, seminar: v })} />
 

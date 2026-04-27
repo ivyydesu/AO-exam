@@ -81,9 +81,9 @@ const TUTOR_TOUR_STEPS: TourStepDef[] = [
     id: "tutor-school",
     path: "/profile/settings",
     tab: "profile",
-    selector: "#tutor-school-input",
-    title: "学校名",
-    description: "在籍校を入力します。信頼性の高いプロフィール作成に重要です。",
+    selector: "#tutor-university-input",
+    title: "在籍大学",
+    description: "在籍大学を入力します。信頼性の高いプロフィール作成に重要です。",
     side: "bottom",
     align: "start"
   },
