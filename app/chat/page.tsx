@@ -178,6 +178,7 @@ export default function ChatHomePage() {
   const [profiles, setProfiles] = useState<Record<string, Counterparty>>({});
   const [detailsByRequest, setDetailsByRequest] = useState<Record<string, RequestDetail>>({});
   const [selectedRequestId, setSelectedRequestId] = useState<string>("");
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
   const [content, setContent] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -225,11 +226,14 @@ export default function ChatHomePage() {
         const requestIds = nextRequests.map((item) => item.id);
         if (requestIds.length === 0) {
           setSelectedRequestId("");
+          setMobileThreadOpen(false);
           setLoading(false);
           return;
         }
 
-        setSelectedRequestId(requestedId && requestIds.includes(requestedId) ? requestedId : requestIds[0]);
+        const initialRequestId = requestedId && requestIds.includes(requestedId) ? requestedId : requestIds[0];
+        setSelectedRequestId(initialRequestId);
+        setMobileThreadOpen(Boolean(requestedId && requestIds.includes(requestedId)));
 
         const participantIds = Array.from(
           new Set(
@@ -534,8 +538,8 @@ export default function ChatHomePage() {
 
   return (
     <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen">
-      <div className="flex h-[calc(100vh-81px)] min-h-[calc(100vh-81px)] overflow-hidden bg-[#F9FAFB] text-[#111827]">
-        <aside className="w-20 shrink-0 border-r border-[#E5E7EB] bg-white/98 lg:w-64">
+      <div className="flex h-[calc(100vh-65px)] min-h-[calc(100vh-65px)] overflow-hidden bg-[#F9FAFB] text-[#111827] sm:h-[calc(100vh-81px)] sm:min-h-[calc(100vh-81px)]">
+        <aside className="hidden w-20 shrink-0 border-r border-[#E5E7EB] bg-white/98 md:block lg:w-64">
           <div className="flex h-full flex-col">
             <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-8">
               <ToolLink href="/calendar" label="スケジュール" icon="📅" />
@@ -545,23 +549,27 @@ export default function ChatHomePage() {
           </div>
         </aside>
 
-        <aside className="flex h-full min-h-0 w-[380px] shrink-0 flex-col border-r border-[#E5E7EB] bg-white">
-          <div className="border-b border-[#E5E7EB] px-6 py-5">
-            <h2 className="text-2xl font-bold tracking-tight text-[#111827]">メッセージ</h2>
-            <p className="mt-1 text-sm text-[#6B7280]">進行中のやり取りを一覧で確認できます。</p>
+        <aside
+          className={`h-full min-h-0 w-full shrink-0 flex-col border-r border-[#E5E7EB] bg-white md:w-[380px] ${
+            mobileThreadOpen ? "hidden md:flex" : "flex"
+          }`}
+        >
+          <div className="border-b border-[#E5E7EB] px-4 py-3 sm:px-6 sm:py-5">
+            <h2 className="text-xl font-bold tracking-tight text-[#111827] sm:text-2xl">メッセージ</h2>
+            <p className="mt-1 text-xs text-[#6B7280] sm:text-sm">進行中のやり取りを一覧で確認できます。</p>
           </div>
-          <div className="border-b border-[#F3F4F6] px-6 py-4">
+          <div className="border-b border-[#F3F4F6] px-4 py-3 sm:px-6 sm:py-4">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">⌕</span>
               <input
-                className="h-11 w-full rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] pl-10 pr-4 text-sm text-[#101816] outline-none transition-all placeholder:text-gray-400 focus:border-[#00b884]/30 focus:bg-white"
+                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] pl-10 pr-4 text-sm text-[#101816] outline-none transition-all placeholder:text-gray-400 focus:border-[#00b884]/30 focus:bg-white sm:h-11"
                 placeholder="チャットを検索"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
           </div>
-          <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+          <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3 pb-24 sm:px-4 sm:py-4 md:pb-4">
             {filteredRequests.map((item) => {
               const otherId = userId === item.requester_id ? item.tutor_id : item.requester_id;
               const other = otherId ? profiles[otherId] : null;
@@ -584,20 +592,21 @@ export default function ChatHomePage() {
                     setSelectedRequestId(item.id);
                     const latestTs = (messagesByRequest[item.id] ?? []).at(-1)?.created_at;
                     if (latestTs) setReadByRequest((prev) => ({ ...prev, [item.id]: latestTs }));
+                    setMobileThreadOpen(true);
                   }}
-                  className={`group relative flex w-full gap-3 rounded-xl border px-4 py-4 text-left transition-all ${active ? "border-[#D1FAE5] bg-[#F0FDF4] shadow-[0_4px_10px_rgba(16,185,129,0.08)]" : "border-transparent bg-[#F9FAFB] hover:border-[#E5E7EB] hover:bg-white"}`}
+                  className={`group relative flex w-full gap-2.5 rounded-xl border px-3 py-3 text-left transition-all sm:gap-3 sm:px-4 sm:py-4 ${active ? "border-[#D1FAE5] bg-[#F0FDF4] shadow-[0_4px_10px_rgba(16,185,129,0.08)]" : "border-transparent bg-[#F9FAFB] hover:border-[#E5E7EB] hover:bg-white"}`}
                 >
                   <div className="relative shrink-0">
                     {other?.avatar_url ? (
-                      <img src={other.avatar_url} alt={other.full_name} className="size-12 rounded-full object-cover" />
+                      <img src={other.avatar_url} alt={other.full_name} className="size-10 rounded-full object-cover sm:size-12" />
                     ) : (
-                      <div className="grid size-12 place-items-center rounded-full bg-indigo-100 font-bold text-indigo-600">{(other?.full_name || "?").slice(0, 1)}</div>
+                      <div className="grid size-10 place-items-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600 sm:size-12">{(other?.full_name || "?").slice(0, 1)}</div>
                     )}
                     <span className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-white bg-[#00b884]" />
                   </div>
                   <div className="min-w-0 flex-1 justify-center">
                     <div className="mb-0.5 flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-semibold">{other?.full_name || "相手未設定"}</span>
+                      <span className="truncate text-[13px] font-semibold sm:text-sm">{other?.full_name || "相手未設定"}</span>
                       <span className={`text-xs ${active ? "font-medium text-[#00b884]" : "text-gray-400"}`}>{latest ? formatDate(latest.created_at) : formatDate(item.created_at)}</span>
                     </div>
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -609,7 +618,7 @@ export default function ChatHomePage() {
                       <span className="truncate text-xs text-[#5e8d7f]">{latestPreview}</span>
                       {unread ? <span className="min-w-5 rounded-full bg-[#00b884] px-1.5 text-center text-[10px] font-bold leading-5 text-white">NEW</span> : null}
                     </div>
-                    <div className="mt-1 text-[11px] text-gray-400">{statusLabel(item.status)}</div>
+                    <div className="mt-1 text-[10px] text-gray-400 sm:text-[11px]">{statusLabel(item.status)}</div>
                   </div>
                   {active ? <div className="absolute left-0 top-1/2 h-10 w-1 -translate-y-1/2 rounded-r-full bg-[#00b884]" /> : null}
                 </button>
@@ -618,28 +627,40 @@ export default function ChatHomePage() {
           </div>
         </aside>
 
-        <main className="relative flex h-full min-h-0 flex-1 flex-col bg-white">
+        <main
+          className={`relative h-full min-h-0 flex-1 flex-col bg-white ${
+            mobileThreadOpen ? "flex" : "hidden md:flex"
+          }`}
+        >
           {selectedRequest ? (
             <>
-              <header className="glass-panel absolute left-0 right-0 top-0 z-10 flex h-16 w-full items-center justify-between border-b border-[#e2e8e6] px-6 backdrop-blur-md">
+              <header className="glass-panel absolute left-0 right-0 top-0 z-10 flex h-14 w-full items-center justify-between border-b border-[#e2e8e6] px-3 backdrop-blur-md sm:h-16 sm:px-6">
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMobileThreadOpen(false)}
+                    className="mr-1 rounded-lg p-1 text-[#6B7280] transition hover:bg-[#F3F4F6] md:hidden"
+                    aria-label="チャット一覧へ戻る"
+                  >
+                    ←
+                  </button>
                   <div className="relative">
                     {selectedOther?.avatar_url ? (
-                      <img src={selectedOther.avatar_url} alt={selectedOther.full_name} className="size-10 rounded-full object-cover ring-2 ring-white" />
+                      <img src={selectedOther.avatar_url} alt={selectedOther.full_name} className="size-9 rounded-full object-cover ring-2 ring-white sm:size-10" />
                     ) : (
-                      <div className="grid size-10 place-items-center rounded-full bg-indigo-100 font-bold text-indigo-600">{(selectedOther?.full_name || "?").slice(0, 1)}</div>
+                      <div className="grid size-9 place-items-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600 sm:size-10">{(selectedOther?.full_name || "?").slice(0, 1)}</div>
                     )}
                     <span className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white bg-[#00b884]" />
                   </div>
                   <div>
-                    <h1 className="flex items-center gap-2 text-base font-bold">
+                    <h1 className="flex items-center gap-1.5 text-sm font-bold sm:gap-2 sm:text-base">
                       {selectedOther?.full_name || "相手未設定"}
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-normal text-gray-500">{selectedOther?.school || selectedRequest.title}</span>
+                      <span className="max-w-[130px] truncate rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-normal text-gray-500 sm:max-w-none sm:text-xs">{selectedOther?.school || selectedRequest.title}</span>
                     </h1>
-                    <p className="text-xs font-medium text-[#00b884]">{statusLabel(selectedRequest.status)}</p>
+                    <p className="text-[10px] font-medium text-[#00b884] sm:text-xs">{statusLabel(selectedRequest.status)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="hidden items-center gap-2 md:flex">
                   <button onClick={openCalendar} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-[#5e8d7f] transition hover:bg-gray-100 hover:text-[#101816]">
                     <span>📅</span>
                     <span className="hidden sm:inline">スケジュール</span>
@@ -661,8 +682,8 @@ export default function ChatHomePage() {
                 </div>
               </header>
 
-              <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 pb-4 pt-20">
-                <section className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-4 shadow-sm">
+              <div className="flex-1 min-h-0 space-y-4 overflow-y-auto px-3 pb-3 pt-[3.75rem] sm:space-y-6 sm:px-6 sm:pb-4 sm:pt-20">
+                <section className="hidden rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-4 shadow-sm sm:block">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <div className="text-sm font-semibold text-[#111827]">使い方</div>
@@ -689,11 +710,11 @@ export default function ChatHomePage() {
                     </div>
                   </div>
                 </section>
-                <div className="my-4 flex justify-center">
+                <div className="my-2 flex justify-center sm:my-4">
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-500">Today</span>
                 </div>
                 {selectedMessages.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-[#D1D5DB] bg-[#FCFEFD] px-6 py-8 text-sm text-[#5e8d7f]">
+                  <div className="rounded-2xl border border-dashed border-[#D1D5DB] bg-[#FCFEFD] px-4 py-6 text-sm text-[#5e8d7f] sm:px-6 sm:py-8">
                     <p className="font-semibold text-[#111827]">まだメッセージがありません</p>
                     <p className="mt-1">下の入力欄から送信すると、この画面に会話が表示されます。</p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -714,15 +735,15 @@ export default function ChatHomePage() {
                     const mine = message.sender_id === userId;
                           const canDelete = canDeleteMessage(message, userId);
                     return (
-                      <div key={message.id} className={`flex max-w-[80%] gap-3 ${mine ? "ml-auto flex-row-reverse" : ""}`}>
+                      <div key={message.id} className={`flex max-w-[92%] gap-2.5 sm:max-w-[80%] sm:gap-3 ${mine ? "ml-auto flex-row-reverse" : ""}`}>
                         {!mine ? (
                           selectedOther?.avatar_url ? (
-                            <img src={selectedOther.avatar_url} alt={selectedOther.full_name} className="mt-1 size-8 shrink-0 rounded-full object-cover" />
+                            <img src={selectedOther.avatar_url} alt={selectedOther.full_name} className="mt-1 size-7 shrink-0 rounded-full object-cover sm:size-8" />
                           ) : (
-                            <div className="mt-1 grid size-8 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">{(selectedOther?.full_name || "?").slice(0, 1)}</div>
+                            <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-600 sm:size-8 sm:text-xs">{(selectedOther?.full_name || "?").slice(0, 1)}</div>
                           )
                         ) : (
-                          <div className="mt-1 grid size-8 shrink-0 place-items-center rounded-full bg-[#dff7ef] text-xs font-bold text-[#00b884]">You</div>
+                          <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-[#dff7ef] text-[10px] font-bold text-[#00b884] sm:size-8 sm:text-xs">You</div>
                         )}
                         <div className={`flex flex-col gap-1 ${mine ? "items-end" : ""}`}>
                           <div className={`flex items-baseline gap-2 ${mine ? "flex-row-reverse" : ""}`}>
@@ -743,7 +764,7 @@ export default function ChatHomePage() {
                             <div className={`w-[340px] max-w-full rounded-2xl border p-3 shadow-sm ${mine ? "border-[#0ea371] bg-[#00b884]/10" : "border-[#E5E7EB] bg-white"}`}>
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-semibold text-[#111827]">{message.file.name}</p>
+                              <p className="truncate text-xs font-semibold text-[#111827] sm:text-sm">{message.file.name}</p>
                                   <p className="text-xs text-gray-500">{formatSize(message.file.size)} ・ {message.file.mimeType}</p>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
@@ -760,7 +781,7 @@ export default function ChatHomePage() {
                               {message.text ? <p className="mt-2 rounded-lg bg-gray-50 px-2 py-1.5 text-sm text-[#374151]">{message.text}</p> : null}
                             </div>
                           ) : (
-                            <div className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm ${mine ? "rounded-2xl rounded-tr-none bg-[#00b884] text-white shadow-[#00b884]/20" : "rounded-2xl rounded-tl-none bg-gray-100 text-[#101816]"}`}>
+                            <div className={`px-3 py-2 text-[13px] leading-relaxed shadow-sm sm:px-4 sm:py-2.5 sm:text-sm ${mine ? "rounded-2xl rounded-tr-none bg-[#00b884] text-white shadow-[#00b884]/20" : "rounded-2xl rounded-tl-none bg-gray-100 text-[#101816]"}`}>
                               <p>{message.text}</p>
                             </div>
                           )}
@@ -771,10 +792,10 @@ export default function ChatHomePage() {
                 )}
               </div>
 
-              <div className="border-t border-[#e2e8e6] bg-white px-6 py-4">
+              <div className="border-t border-[#e2e8e6] bg-white px-3 py-2.5 sm:px-6 sm:py-4">
                 {canChat ? (
                   <>
-                    <div className="flex items-center gap-3 rounded-2xl border border-[#e2e8e6] bg-[#fbfdfd] px-4 py-3 shadow-sm">
+                    <div className="flex items-center gap-2 rounded-2xl border border-[#e2e8e6] bg-[#fbfdfd] px-3 py-2.5 shadow-sm sm:gap-3 sm:px-4 sm:py-3">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -788,13 +809,13 @@ export default function ChatHomePage() {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploading}
-                        className="grid size-10 shrink-0 place-items-center rounded-full border border-[#d1d5db] text-[#5e8d7f] transition hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="grid size-9 shrink-0 place-items-center rounded-full border border-[#d1d5db] text-[#5e8d7f] transition hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60 sm:size-10"
                         title="ファイル送信"
                       >
                         +
                       </button>
                       <textarea
-                        className="max-h-28 min-h-[44px] flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400"
+                        className="max-h-24 min-h-[36px] flex-1 resize-none bg-transparent text-[13px] outline-none placeholder:text-gray-400 sm:max-h-28 sm:min-h-[44px] sm:text-sm"
                         placeholder={messagePlaceholder}
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
@@ -809,12 +830,12 @@ export default function ChatHomePage() {
                         type="button"
                         onClick={sendMessage}
                         disabled={uploading || sending || !content.trim()}
-                        className="grid size-11 place-items-center rounded-full bg-[#00b884] text-white shadow-[0_0_15px_rgba(0,184,132,0.15)] transition hover:bg-[#00a374] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="grid size-9 place-items-center rounded-full bg-[#00b884] text-white shadow-[0_0_15px_rgba(0,184,132,0.15)] transition hover:bg-[#00a374] disabled:cursor-not-allowed disabled:opacity-60 sm:size-11"
                       >
                         {sending ? "…" : "➤"}
                       </button>
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2 px-2 text-xs text-[#94A3B8]">
+                    <div className="mt-2 hidden flex-wrap items-center gap-2 px-2 text-xs text-[#94A3B8] sm:flex">
                       入力例: {messagePlaceholder}
                       <span className="rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[11px] text-[#6B7280]">送信後も自分のメッセージは削除できます</span>
                     </div>

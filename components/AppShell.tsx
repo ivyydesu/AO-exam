@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 import GlobalTopBar from "./GlobalTopBar";
+import MobileBottomTabBar from "./MobileBottomTabBar";
 import AccountSuspensionOverlay from "./AccountSuspensionOverlay";
 import OnboardingTour from "./OnboardingTour";
 
@@ -25,8 +26,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           isAuthPage
             ? "app-shell relative min-h-screen"
             : isCallPage
-              ? "app-shell relative h-[calc(100vh-81px)] overflow-hidden bg-[#F9FAFB]"
-              : "app-shell relative min-h-[calc(100vh-81px)] bg-[#F9FAFB]"
+              ? "app-shell relative h-[calc(100vh-65px)] overflow-hidden bg-[#F9FAFB] sm:h-[calc(100vh-81px)]"
+              : "app-shell relative min-h-[calc(100vh-65px)] bg-[#F9FAFB] sm:min-h-[calc(100vh-81px)]"
         }
       >
         {!isAuthPage && !isCallPage ? (
@@ -39,9 +40,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {isCallPage ? (
           <div className="app-shell__content relative z-10 h-full w-full">{children}</div>
         ) : (
-          <div className="app-shell__content relative z-10 mx-auto w-full max-w-[1220px] px-6 py-8">{children}</div>
+          <div className="app-shell__content relative z-10 mx-auto w-full max-w-[1220px] px-4 pb-24 pt-5 sm:px-6 sm:pb-28 sm:pt-8 md:pb-8">{children}</div>
         )}
       </main>
+      {!isAuthPage && !isCallPage ? <MobileBottomTabBar /> : null}
       <AccountSuspensionOverlay />
     </>
   );

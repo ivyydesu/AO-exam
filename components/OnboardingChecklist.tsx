@@ -35,6 +35,7 @@ type PersistedChecklistState = DragPosition & {
 };
 
 const STORAGE_KEY = "onboarding-checklist:ui-state:v1";
+const COMPLETED_STORAGE_KEY_PREFIX = "onboarding-checklist:completed:v1";
 const CARD_WIDTH = 360;
 const DEFAULT_CARD_HEIGHT = 280;
 const WINDOW_MARGIN = 12;
@@ -69,6 +70,8 @@ export default function OnboardingChecklist() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hideByCompletedFlag, setHideByCompletedFlag] = useState(false);
+  const [completedStorageKey, setCompletedStorageKey] = useState<string | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState<DragPosition | null>(null);
   const [dragBounds, setDragBounds] = useState<DragBounds>({ left: 0, top: 0, right: 0, bottom: 0 });
@@ -103,8 +106,18 @@ export default function OnboardingChecklist() {
           if (mounted) {
             setRole(null);
             setItems([]);
+            setHideByCompletedFlag(false);
+            setCompletedStorageKey(null);
           }
           return;
+        }
+
+        const nextCompletedStorageKey = `${COMPLETED_STORAGE_KEY_PREFIX}:${user.id}`;
+        const completedFlag =
+          typeof window !== "undefined" && window.localStorage.getItem(nextCompletedStorageKey) === "1";
+        if (mounted) {
+          setCompletedStorageKey(nextCompletedStorageKey);
+          setHideByCompletedFlag(completedFlag);
         }
 
         const { data: profile } = await supabase
@@ -122,6 +135,12 @@ export default function OnboardingChecklist() {
 
         if (resolvedRole === "admin") {
           setRole("admin");
+          setItems([]);
+          return;
+        }
+
+        if (completedFlag) {
+          setRole(resolvedRole);
           setItems([]);
           return;
         }
@@ -230,6 +249,19 @@ export default function OnboardingChecklist() {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    if (loading || hideByCompletedFlag || !completedStorageKey) return;
+    const requiredItems = items.filter((item) => item.required !== false);
+    if (requiredItems.length === 0) return;
+    const allRequiredCompleted = requiredItems.every((item) => item.completed);
+    if (!allRequiredCompleted) return;
+
+    setHideByCompletedFlag(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(completedStorageKey, "1");
+    }
+  }, [loading, hideByCompletedFlag, completedStorageKey, items]);
+
   const recalculateBounds = useCallback(
     (basePosition?: DragPosition) => {
       if (typeof window === "undefined" || !cardRef.current) return;
@@ -318,6 +350,7 @@ export default function OnboardingChecklist() {
   }, [hydrated, isMinimized, position]);
 
   if (hiddenOn || role === "admin" || role === null) return null;
+  if (hideByCompletedFlag) return null;
   if (!hydrated || !position) return null;
 
   const requiredItems = items.filter((item) => item.required !== false);

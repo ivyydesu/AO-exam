@@ -223,7 +223,7 @@ export default function GlobalTopBar() {
 
   return (
     <header className="app-topbar relative z-40 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
-      <div className="mx-auto flex h-20 w-full max-w-[1220px] items-center justify-between gap-3 px-3 sm:gap-6 sm:px-6">
+      <div className="mx-auto flex h-16 w-full max-w-[1220px] items-center justify-between gap-2 px-3 sm:h-20 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 items-center gap-3 sm:gap-10">
           <BrandLogo href="/home" size="sm" textClassName="text-[15px] font-bold tracking-tight text-[#111827] sm:text-[17px]" />
           <nav className="hidden items-center gap-3 md:flex">
@@ -243,7 +243,7 @@ export default function GlobalTopBar() {
           >
             <Link
               href="/notifications"
-              className="relative grid h-10 w-10 place-items-center rounded-xl text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#10B981] sm:h-12 sm:w-12"
+              className="relative grid h-9 w-9 place-items-center rounded-xl text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#10B981] sm:h-12 sm:w-12"
               aria-label="通知"
             >
               <BellIcon />
@@ -290,7 +290,7 @@ export default function GlobalTopBar() {
             ) : null}
           </div>
 
-          <div className="h-10 w-px bg-[#E5E7EB]" />
+          <div className="h-8 w-px bg-[#E5E7EB] sm:h-10" />
 
           <div
             className="relative pr-2"
@@ -300,13 +300,13 @@ export default function GlobalTopBar() {
             <button
               id="topbar-profile-menu-button"
               type="button"
-              className="flex min-h-[52px] items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-[#F9FAFB] sm:min-h-[56px] sm:min-w-[172px] sm:gap-3 sm:px-3"
+              className="flex min-h-[44px] items-center gap-2 rounded-xl px-2 py-1.5 text-left transition hover:bg-[#F9FAFB] sm:min-h-[56px] sm:min-w-[172px] sm:gap-3 sm:px-3 sm:py-2"
             >
               <div className="hidden text-right leading-tight sm:block">
                 <div className="text-[12px] font-semibold text-[#6B7280]">{profile.roleLabel}</div>
                 <div className="text-[15px] font-semibold text-[#374151]">{profile.name}</div>
               </div>
-              <div className="h-9 w-9 overflow-hidden rounded-full border border-[#E5E7EB] bg-[#F3F4F6] sm:h-10 sm:w-10">
+              <div className="h-8 w-8 overflow-hidden rounded-full border border-[#E5E7EB] bg-[#F3F4F6] sm:h-10 sm:w-10">
                 {profile.avatarUrl ? (
                   <img src={profile.avatarUrl} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
