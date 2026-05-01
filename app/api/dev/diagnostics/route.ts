@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   const supabaseUrl = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
+  const publicSupabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
   const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim();
@@ -114,11 +115,37 @@ export async function GET(req: NextRequest) {
     (supabaseAuthHttpStatus !== null && supabaseAuthHttpStatus >= 200 && supabaseAuthHttpStatus < 500) &&
     (supabaseRestHttpStatus !== null && supabaseRestHttpStatus >= 200 && supabaseRestHttpStatus < 500);
 
+  const parseHost = (value: string) => {
+    if (!value) return "";
+    try {
+      return new URL(value).host;
+    } catch {
+      return "invalid-url";
+    }
+  };
+  const parseProtocol = (value: string) => {
+    if (!value) return "";
+    try {
+      return new URL(value).protocol.replace(":", "");
+    } catch {
+      return "invalid";
+    }
+  };
+
+  const supabaseUrlMeta = {
+    public_host: parseHost(publicSupabaseUrl),
+    server_host: parseHost(supabaseUrl),
+    public_protocol: parseProtocol(publicSupabaseUrl),
+    server_protocol: parseProtocol(supabaseUrl),
+    public_equals_server: Boolean(publicSupabaseUrl && supabaseUrl && publicSupabaseUrl === supabaseUrl)
+  };
+
   return NextResponse.json({
     ok: Object.values(envPublic).every(Boolean),
     nodeEnv: process.env.NODE_ENV,
     isAdminCaller,
     env,
+    supabaseUrlMeta,
     checks,
     isSupabaseReachable,
     hint:
