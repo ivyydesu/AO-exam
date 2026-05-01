@@ -27,11 +27,27 @@ type TutorProfileRow = {
   is_public?: boolean;
 };
 
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+  school: string | null;
+  line_user_id: string | null;
+  accepted_school?: string | null;
+};
+
 const TUTOR_SELECT_BASE =
   "nickname, avatar_url, cover_url, university, accepted_school, department, seminar, grade, research_theme, coaching_experience, bio, is_published, is_public";
 
 function isMissingColumnError(message: string, column: string) {
-  return message.includes(`column "${column}"`) || message.includes(`column ${column}`) || message.includes(`'${column}'`);
+  return (
+    message.includes(`column "${column}"`) ||
+    message.includes(`column ${column}`) ||
+    message.includes(`'${column}'`) ||
+    message.includes(`.${column}`) ||
+    message.includes(`"${column} does not exist"`) ||
+    message.includes(`${column} does not exist`)
+  );
 }
 
 function buildTutorSelect(excluded: Set<string>) {
@@ -78,18 +94,41 @@ async function ensureAvatarBucket() {
   await supabaseAdmin.storage.createBucket("avatars", { public: true });
 }
 
+async function fetchProfileRow(userId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const withAccepted = await supabaseAdmin
+    .from("profiles")
+    .select("id, full_name, role, school, accepted_school, line_user_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!withAccepted.error) {
+    return withAccepted.data as ProfileRow | null;
+  }
+
+  if (!isMissingColumnError(withAccepted.error.message, "accepted_school")) {
+    throw new Error(withAccepted.error.message);
+  }
+
+  const fallback = await supabaseAdmin
+    .from("profiles")
+    .select("id, full_name, role, school, line_user_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (fallback.error) {
+    throw new Error(fallback.error.message);
+  }
+
+  return fallback.data as ProfileRow | null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const user = await requireUserFromBearerToken(req);
-    const supabaseAdmin = getSupabaseAdmin();
-
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, full_name, role, school, line_user_id")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !profile) {
+    const profile = await fetchProfileRow(user.id);
+    if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
@@ -107,7 +146,7 @@ export async function GET(req: NextRequest) {
           avatar_url: tutor?.avatar_url ?? "",
           cover_url: tutor?.cover_url ?? "",
           university: tutor?.university ?? "",
-          accepted_school: tutor?.accepted_school ?? "",
+          accepted_school: tutor?.accepted_school ?? profile.accepted_school ?? profile.school ?? "",
           department: tutor?.department ?? "",
           seminar: tutor?.seminar ?? "",
           grade: tutor?.grade ?? "",
@@ -148,11 +187,16 @@ export async function POST(req: NextRequest) {
 
     const form = await req.formData();
     const fullName = sanitizePlainText(String(form.get("full_name") ?? ""), 80);
-    const nickname = sanitizePlainText(String(form.get("nickname") ?? ""), 40);
-    const schoolInput = sanitizePlainText(String(form.get("school") ?? ""), 120);
+    const nicknameInput = sanitizePlainText(String(form.get("nickname") ?? ""), 40);
+    const nickname = nicknameInput || fullName;
+    if (!nickname) {
+      return NextResponse.json({ error: "nickname is required" }, { status: 400 });
+    }
+    const schoolInput = sanitizePlainText(String(form.get("school") ?? ""), 240);
     const universityInput = sanitizePlainText(String(form.get("university") ?? ""), 120);
-    const university = universityInput || schoolInput;
-    const acceptedSchool = sanitizePlainText(String(form.get("accepted_school") ?? ""), 240);
+    const acceptedSchoolInput = sanitizePlainText(String(form.get("accepted_school") ?? ""), 240);
+    const university = universityInput;
+    const acceptedSchool = acceptedSchoolInput || schoolInput;
     const department = sanitizePlainText(String(form.get("department") ?? ""), 120);
     const seminar = sanitizePlainText(String(form.get("seminar") ?? ""), 120);
     const grade = sanitizePlainText(String(form.get("grade") ?? ""), 20);
@@ -208,7 +252,7 @@ export async function POST(req: NextRequest) {
 
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
-      .update({ full_name: fullName, school: university })
+      .update({ full_name: fullName, school: acceptedSchool })
       .eq("id", user.id);
 
     if (profileError) {
@@ -268,7 +312,7 @@ export async function POST(req: NextRequest) {
       profile: {
         full_name: fullName,
         nickname: latestProfile?.nickname ?? nickname,
-        school: university,
+        school: latestProfile?.accepted_school ?? acceptedSchool,
         university: latestProfile?.university ?? university,
         accepted_school: latestProfile?.accepted_school ?? acceptedSchool,
         department: latestProfile?.department ?? department,

@@ -6,6 +6,7 @@ type TutorProfileRow = {
   nickname?: string | null;
   avatar_url: string | null;
   university: string | null;
+  accepted_school?: string | null;
   department: string | null;
   seminar: string | null;
   grade: string | null;
@@ -16,7 +17,6 @@ type TutorProfileRow = {
 
 type ProfileRow = {
   id: string;
-  full_name: string | null;
   school: string | null;
   role: string;
   tutor_profiles: TutorProfileRow | TutorProfileRow[] | null;
@@ -25,6 +25,17 @@ type ProfileRow = {
 const MENTOR_ROLES = ["tutor", "university", "mentor", "university_student", "college_student", "大学生", "先輩"];
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 30;
+
+function isMissingColumnError(message: string, column: string) {
+  return (
+    message.includes(`column "${column}"`) ||
+    message.includes(`column ${column}`) ||
+    message.includes(`'${column}'`) ||
+    message.includes(`.${column}`) ||
+    message.includes(`"${column} does not exist"`) ||
+    message.includes(`${column} does not exist`)
+  );
+}
 
 function pickTutorProfile(value: ProfileRow["tutor_profiles"]): TutorProfileRow | null {
   if (!value) return null;
@@ -62,16 +73,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ items: [] });
     }
 
-    const { data: profiles, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select(
-        "id, full_name, school, role, tutor_profiles!inner(user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio)"
-      )
-      .in("role", MENTOR_ROLES)
-      .in("id", verifiedTutorIds)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(offset, offset + limit - 1);
+    const queryWithAcceptedSchool = () =>
+      supabaseAdmin
+        .from("profiles")
+        .select(
+          "id, school, role, tutor_profiles!inner(user_id, nickname, avatar_url, university, accepted_school, department, seminar, grade, research_theme, coaching_experience, bio)"
+        )
+        .in("role", MENTOR_ROLES)
+        .in("id", verifiedTutorIds)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + limit - 1);
+
+    const queryWithoutAcceptedSchool = () =>
+      supabaseAdmin
+        .from("profiles")
+        .select(
+          "id, school, role, tutor_profiles!inner(user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio)"
+        )
+        .in("role", MENTOR_ROLES)
+        .in("id", verifiedTutorIds)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + limit - 1);
+
+    let profiles: ProfileRow[] | null = null;
+    let profileError: { message: string } | null = null;
+
+    const firstResult = await queryWithAcceptedSchool();
+    profiles = (firstResult.data as ProfileRow[] | null) ?? null;
+    profileError = firstResult.error;
+    if (profileError && isMissingColumnError(profileError.message, "accepted_school")) {
+      const fallback = await queryWithoutAcceptedSchool();
+      profiles = (fallback.data as ProfileRow[] | null) ?? null;
+      profileError = fallback.error;
+    }
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 400 });
@@ -133,23 +169,24 @@ export async function GET(request: Request) {
     const items = tutorCandidates.map(({ profile, tutor, tutorId }) => {
       const stat = reviewStats.get(tutorId) ?? { rating: 0, reviews: 0 };
       const nickname = (tutor?.nickname ?? "").trim();
-      const fullName = (profile.full_name ?? "").trim();
       const university = tutor?.university ?? "";
       const department = tutor?.department ?? "";
       const seminar = tutor?.seminar ?? "";
       const grade = tutor?.grade ?? "";
+      const acceptedSchool = (tutor?.accepted_school ?? profile.school ?? "").trim();
       const researchTheme = tutor?.research_theme ?? "";
       const coachingExperience = tutor?.coaching_experience ?? "";
       const bio = tutor?.bio ?? "";
       return {
         id: tutorId,
-        name: nickname || fullName || "先輩メンター",
+        name: nickname || "匿名ユーザー",
         nickname,
-        full_name: fullName,
-        school: profile.school ?? "",
+        school: acceptedSchool,
+        accepted_school: acceptedSchool,
         avatar: tutor?.avatar_url ?? "",
         tutor_profiles: {
           university,
+          accepted_school: acceptedSchool,
           department,
           seminar,
           grade,

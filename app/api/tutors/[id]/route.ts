@@ -5,6 +5,17 @@ import { requireUserFromBearerToken } from "../../../../lib/auth/requireUser";
 const UUID_V4_OR_V1 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MENTOR_ROLES = new Set(["tutor", "university", "mentor", "university_student", "college_student", "大学生", "先輩"]);
 
+function isMissingColumnError(message: string, column: string) {
+  return (
+    message.includes(`column "${column}"`) ||
+    message.includes(`column ${column}`) ||
+    message.includes(`'${column}'`) ||
+    message.includes(`.${column}`) ||
+    message.includes(`"${column} does not exist"`) ||
+    message.includes(`${column} does not exist`)
+  );
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
@@ -27,24 +38,34 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, school, role")
+      .select("id, school, role")
       .eq("id", tutorId)
       .maybeSingle();
     if (!profile || !MENTOR_ROLES.has(String(profile.role))) {
       return NextResponse.json({ error: "Tutor not found" }, { status: 404 });
     }
 
-    const withPublish = await supabaseAdmin
+    const withAcceptedSchool = await supabaseAdmin
       .from("tutor_profiles")
-      .select("nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
+      .select("nickname, avatar_url, university, accepted_school, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
       .eq("user_id", tutorId)
       .maybeSingle();
+
+    let withPublish = withAcceptedSchool;
+    if (withAcceptedSchool.error && isMissingColumnError(withAcceptedSchool.error.message, "accepted_school")) {
+      withPublish = await supabaseAdmin
+        .from("tutor_profiles")
+        .select("nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio, is_published")
+        .eq("user_id", tutorId)
+        .maybeSingle();
+    }
 
     let tutor = withPublish.data as
       | {
           nickname?: string | null;
           avatar_url: string | null;
           university: string;
+          accepted_school?: string | null;
           department: string;
           seminar: string;
           grade: string;
@@ -106,10 +127,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({
       item: {
         id: tutorId,
-        name: (tutor.nickname ?? "").trim() || (profile.full_name ?? "").trim() || "先輩メンター",
+        name: (tutor.nickname ?? "").trim() || "匿名ユーザー",
         school: profile.school ?? "",
+        accepted_school: (tutor.accepted_school?.trim() || profile.school) ?? "",
         avatar: tutor.avatar_url ?? "",
-        university: (tutor.university?.trim() || profile.school) ?? "",
+        university: tutor.university?.trim() ?? "",
         department: tutor.department ?? "",
         seminar: tutor.seminar ?? "",
         grade: tutor.grade ?? "",

@@ -22,9 +22,7 @@ type Mentor = {
 
 type FeaturedTutorApiItem = {
   id: string;
-  name?: string;
   nickname?: string | null;
-  full_name?: string | null;
   school?: string;
   avatar?: string;
   university?: string;
@@ -113,9 +111,7 @@ function pickTutorProfile(value: FeaturedTutorApiItem["tutor_profiles"]) {
 function mapTutorItem(item: FeaturedTutorApiItem): Mentor {
   const tutorProfile = pickTutorProfile(item.tutor_profiles);
   const nickname = (item.nickname ?? "").trim();
-  const fullName = (item.full_name ?? "").trim();
-  const fallbackName = (item.name ?? "").trim();
-  const universityRaw = (tutorProfile?.university || item.university || item.school || "").trim();
+  const universityRaw = (tutorProfile?.university || item.university || "").trim();
   const departmentRaw = (tutorProfile?.department || item.department || "").trim();
   const gradeRaw = (tutorProfile?.grade || item.grade || "").trim();
   const seminarRaw = (tutorProfile?.seminar || item.seminar || "").trim();
@@ -124,7 +120,7 @@ function mapTutorItem(item: FeaturedTutorApiItem): Mentor {
   const avatarRaw = (item.avatar || tutorProfile?.avatar_url || "").trim();
   return {
     id: item.id,
-    name: nickname || fullName || fallbackName || "先輩メンター",
+    name: nickname || "匿名ユーザー",
     university: universityRaw || "未設定",
     department: departmentRaw || "未設定",
     grade: gradeRaw || "未設定",

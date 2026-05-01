@@ -6,7 +6,7 @@ import { getSupabaseClient } from "../../../lib/supabase/client";
 
 type TutorInfo = {
   id: string;
-  full_name: string;
+  nickname: string;
   school: string | null;
 };
 
@@ -91,12 +91,25 @@ function RequestNewPageContent() {
       }
 
       if (!tutorId) return;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id, full_name, school")
-        .eq("id", tutorId)
-        .maybeSingle();
-      if (profile) setTutorInfo(profile as TutorInfo);
+      const [{ data: profile }, { data: tutorProfile }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, school")
+          .eq("id", tutorId)
+          .maybeSingle(),
+        supabase
+          .from("tutor_profiles")
+          .select("nickname")
+          .eq("user_id", tutorId)
+          .maybeSingle()
+      ]);
+      if (profile) {
+        setTutorInfo({
+          id: profile.id,
+          school: profile.school ?? null,
+          nickname: String(tutorProfile?.nickname ?? "").trim() || "匿名ユーザー"
+        });
+      }
     };
     load();
   }, [tutorId]);
@@ -190,7 +203,7 @@ function RequestNewPageContent() {
           </p>
           {tutorInfo && (
             <p className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-sea/80">
-              依頼先: <span className="font-semibold">{tutorInfo.full_name}</span>
+              依頼先: <span className="font-semibold">{tutorInfo.nickname}</span>
               {tutorInfo.school ? `（${tutorInfo.school}）` : ""}
             </p>
           )}

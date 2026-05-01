@@ -12,11 +12,23 @@ function normalizeForMatch(value: string) {
   return value.toLowerCase().replace(/\s+/g, "");
 }
 
+function isMissingColumnError(message: string, column: string) {
+  return (
+    message.includes(`column "${column}"`) ||
+    message.includes(`column ${column}`) ||
+    message.includes(`'${column}'`) ||
+    message.includes(`.${column}`) ||
+    message.includes(`"${column} does not exist"`) ||
+    message.includes(`${column} does not exist`)
+  );
+}
+
 type TutorRow = {
   user_id: string;
   nickname?: string | null;
   avatar_url: string | null;
   university: string;
+  accepted_school?: string | null;
   department: string;
   seminar: string;
   grade: string;
@@ -27,7 +39,6 @@ type TutorRow = {
 
 type ProfileRow = {
   id: string;
-  full_name: string | null;
   school: string | null;
   role: string;
 };
@@ -55,28 +66,50 @@ export async function GET(req: NextRequest) {
 
     let tutors: TutorRow[] | null = null;
 
-    const withNicknameQuery = supabaseAdmin
-      .from("tutor_profiles")
-      .select("user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio");
-    let query = withNicknameQuery;
-    if (seminar) query = query.ilike("seminar", `%${seminar}%`);
-    if (researchTheme) query = query.ilike("research_theme", `%${researchTheme}%`);
-    if (grade) query = query.eq("grade", grade);
-    const withNickname = await query.limit(100);
+    const withNicknameQueryWithAcceptedSchool = () =>
+      supabaseAdmin
+        .from("tutor_profiles")
+        .select("user_id, nickname, avatar_url, university, accepted_school, department, seminar, grade, research_theme, coaching_experience, bio");
+    const withNicknameQueryWithoutAcceptedSchool = () =>
+      supabaseAdmin
+        .from("tutor_profiles")
+        .select("user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio");
+
+    let withNicknameBuilder = withNicknameQueryWithAcceptedSchool();
+    if (seminar) withNicknameBuilder = withNicknameBuilder.ilike("seminar", `%${seminar}%`);
+    if (researchTheme) withNicknameBuilder = withNicknameBuilder.ilike("research_theme", `%${researchTheme}%`);
+    if (grade) withNicknameBuilder = withNicknameBuilder.eq("grade", grade);
+    let withNickname: any = await withNicknameBuilder.limit(100);
+    if (withNickname.error && isMissingColumnError(withNickname.error.message, "accepted_school")) {
+      let withoutAcceptedBuilder = withNicknameQueryWithoutAcceptedSchool();
+      if (seminar) withoutAcceptedBuilder = withoutAcceptedBuilder.ilike("seminar", `%${seminar}%`);
+      if (researchTheme) withoutAcceptedBuilder = withoutAcceptedBuilder.ilike("research_theme", `%${researchTheme}%`);
+      if (grade) withoutAcceptedBuilder = withoutAcceptedBuilder.eq("grade", grade);
+      withNickname = await withoutAcceptedBuilder.limit(100);
+    }
     if (!withNickname.error) {
-      tutors = withNickname.data;
+      tutors = (withNickname.data as TutorRow[] | null) ?? null;
     } else {
       let fallbackQuery = supabaseAdmin
         .from("tutor_profiles")
-        .select("user_id, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio");
+        .select("user_id, avatar_url, university, accepted_school, department, seminar, grade, research_theme, coaching_experience, bio");
       if (seminar) fallbackQuery = fallbackQuery.ilike("seminar", `%${seminar}%`);
       if (researchTheme) fallbackQuery = fallbackQuery.ilike("research_theme", `%${researchTheme}%`);
       if (grade) fallbackQuery = fallbackQuery.eq("grade", grade);
-      const fallback = await fallbackQuery.limit(100);
+      let fallback: any = await fallbackQuery.limit(100);
+      if (fallback.error && isMissingColumnError(fallback.error.message, "accepted_school")) {
+        let legacyFallbackQuery = supabaseAdmin
+          .from("tutor_profiles")
+          .select("user_id, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio");
+        if (seminar) legacyFallbackQuery = legacyFallbackQuery.ilike("seminar", `%${seminar}%`);
+        if (researchTheme) legacyFallbackQuery = legacyFallbackQuery.ilike("research_theme", `%${researchTheme}%`);
+        if (grade) legacyFallbackQuery = legacyFallbackQuery.eq("grade", grade);
+        fallback = await legacyFallbackQuery.limit(100);
+      }
       if (fallback.error) {
         return NextResponse.json({ error: fallback.error.message }, { status: 400 });
       }
-      tutors = fallback.data;
+      tutors = (fallback.data as TutorRow[] | null) ?? null;
     }
 
     const userIds = (tutors ?? []).map((t) => t.user_id);
@@ -85,7 +118,7 @@ export async function GET(req: NextRequest) {
     if (userIds.length > 0) {
       const { data: profiles, error: profileError } = await supabaseAdmin
         .from("profiles")
-        .select("id, full_name, school, role")
+        .select("id, school, role")
         .in("id", userIds);
       if (profileError) {
         return NextResponse.json({ error: profileError.message }, { status: 400 });
@@ -116,10 +149,12 @@ export async function GET(req: NextRequest) {
         if (!profile) return null;
         const isPublished = approvedSet.has(t.user_id);
         if (!canIncludeUnpublished && !isPublished) return null;
+        const acceptedSchool = (t.accepted_school ?? profile.school ?? "").trim();
         return {
           id: t.user_id,
-          name: (t.nickname ?? "").trim() || (profile.full_name ?? "").trim() || "先輩メンター",
-          school: profile.school ?? "",
+          name: (t.nickname ?? "").trim() || "匿名ユーザー",
+          school: acceptedSchool,
+          accepted_school: acceptedSchool,
           avatar: t.avatar_url ?? "",
           university: t.university,
           department: t.department,

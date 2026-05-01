@@ -60,6 +60,31 @@ function LoginPageContent() {
   const [resetCooldown, setResetCooldown] = useState(0);
   const callbackHandledCodeRef = useRef<string | null>(null);
 
+  const buildFetchFailureDetail = async () => {
+    try {
+      const supabase = getSupabaseClient();
+      const [diagRes, sessionResult] = await Promise.allSettled([
+        fetch("/api/dev/diagnostics").then(async (res) => {
+          const json = await res.json().catch(() => ({}));
+          return { status: res.status, json };
+        }),
+        supabase?.auth.getSession()
+      ]);
+
+      const diagText =
+        diagRes.status === "fulfilled"
+          ? `diag=${diagRes.value.status}, reachable=${String((diagRes.value.json as { isSupabaseReachable?: boolean }).isSupabaseReachable)}`
+          : "diag=failed";
+      const sessionText =
+        sessionResult.status === "fulfilled"
+          ? `session=${sessionResult.value?.data?.session ? "yes" : "no"}`
+          : "session=unknown";
+      return `${diagText}, ${sessionText}`;
+    } catch {
+      return "diag=failed";
+    }
+  };
+
   const getLandingPath = (currentRole: "student" | "tutor" | "admin") => {
     if (currentRole === "student" || currentRole === "tutor") return "/home";
     if (currentRole === "admin") return `/auth/2fa?mode=admin&email=${encodeURIComponent(email)}&returnTo=${encodeURIComponent("/admin")}`;
@@ -107,47 +132,35 @@ function LoginPageContent() {
 
   const ensureRole = async (
     userId: string,
+    accessToken: string,
     userEmail?: string | null,
     registeredRole?: unknown
   ): Promise<"student" | "tutor" | "admin"> => {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabaseが初期化されていません");
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, role, full_name")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (profileError) throw profileError;
-
     const normalizedRegisteredRole = normalizeRole(registeredRole);
+    const resolvedRole =
+      normalizedRegisteredRole === "admin" && !isAllowedAdminEmail(userEmail)
+        ? roleHint
+        : (normalizedRegisteredRole ?? roleHint);
+    const fallbackName = (userEmail?.split("@")[0] ?? "ユニブリ User").slice(0, 40);
 
-    if (!profile) {
-      const createRole =
-        normalizedRegisteredRole === "admin" && !isAllowedAdminEmail(userEmail)
-          ? roleHint
-          : (normalizedRegisteredRole ?? roleHint);
-      const fallbackName = (userEmail?.split("@")[0] ?? "ユニブリ User").slice(0, 40);
-      const { error: insertError } = await supabase.from("profiles").insert({
+    const res = await fetch("/api/profile/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
         id: userId,
         full_name: fallbackName,
-        role: createRole,
+        role: resolvedRole,
         school: null
-      });
-      if (insertError) throw new Error(`プロフィール初期化に失敗しました: ${insertError.message}`);
-      return createRole;
-    }
+      })
+    });
 
-    const normalizedProfileRole = normalizeRole(profile.role);
-    let resolvedRole: CanonicalRole = normalizedProfileRole ?? normalizedRegisteredRole ?? roleHint;
-    if (resolvedRole === "admin" && !isAllowedAdminEmail(userEmail)) {
-      resolvedRole = "student";
-    }
-
-    const currentProfileRole = String(profile.role ?? "").trim();
-    if (currentProfileRole !== resolvedRole) {
-      const { error: updateError } = await supabase.from("profiles").update({ role: resolvedRole }).eq("id", userId);
-      if (updateError) throw new Error(`プロフィール権限の同期に失敗しました: ${updateError.message}`);
+    if (!res.ok && res.status !== 409) {
+      const payload = await res.json().catch(() => ({}));
+      const apiError = typeof payload?.error === "string" ? payload.error : `HTTP ${res.status}`;
+      throw new Error(`プロフィール初期化に失敗しました: ${apiError}`);
     }
 
     return resolvedRole;
@@ -174,7 +187,17 @@ function LoginPageContent() {
           throw new Error(exchangeError?.message ?? "認証コードの処理に失敗しました");
         }
 
-        const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
+        const accessToken = data.session?.access_token;
+        if (!accessToken) {
+          throw new Error("認証セッションの取得に失敗しました");
+        }
+        let resolvedRole: "student" | "tutor" | "admin" =
+          normalizeRole(data.user.user_metadata?.role) ?? roleHint;
+        try {
+          resolvedRole = await ensureRole(data.user.id, accessToken, data.user.email, data.user.user_metadata?.role);
+        } catch (syncError) {
+          console.warn("profile sync failed on callback login", syncError);
+        }
         const nextPath = normalizeNextPath(searchParams.get("next"));
         const destination = resolvedRole === "admin" ? getLandingPath(resolvedRole) : nextPath;
 
@@ -205,10 +228,12 @@ function LoginPageContent() {
     event.preventDefault();
     setError(null);
     setLoading(true);
+    let step = "supabase.auth.signInWithPassword";
     try {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Supabaseが初期化されていません");
 
+      step = "supabase.auth.signInWithPassword";
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -217,9 +242,20 @@ function LoginPageContent() {
       if (!data.user.email_confirmed_at) {
         throw new Error("メール認証が未完了です。先にメール内リンクを開いてください。");
       }
-      const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
+      step = "profiles.ensureRole";
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error("認証セッションの取得に失敗しました");
+      let resolvedRole: "student" | "tutor" | "admin" =
+        normalizeRole(data.user.user_metadata?.role) ?? roleHint;
+      try {
+        resolvedRole = await ensureRole(data.user.id, accessToken, data.user.email, data.user.user_metadata?.role);
+      } catch (syncError) {
+        console.warn("profile sync failed on password login", syncError);
+        setNotice("プロフィール同期に一部失敗しました。ログインは継続します。");
+      }
       const normalizedMetaRole = normalizeRole(data.user.user_metadata?.role);
       if (normalizedMetaRole !== resolvedRole) {
+        step = "auth.updateUserMetadata";
         await supabase.auth
           .updateUser({
             data: {
@@ -232,6 +268,7 @@ function LoginPageContent() {
       setRoleHint(resolvedRole === "admin" ? "student" : resolvedRole);
 
       if (resolvedRole !== "admin") {
+        step = "api.admin2fa.clear";
         await fetch("/api/auth/admin-2fa/clear", { method: "POST" }).catch(() => undefined);
       }
 
@@ -247,9 +284,13 @@ function LoginPageContent() {
     } catch (e) {
       const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
-        setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
+        const detail = await buildFetchFailureDetail();
+        setError(
+          `Failed to fetch (${step}): ネットワークまたはブラウザ拡張機能の影響が疑われます。` +
+            ` ${detail}。シークレットウィンドウで再試行してください。`
+        );
       } else {
-        setError(message);
+        setError(`${message} (step=${step})`);
       }
     } finally {
       setLoading(false);
@@ -274,7 +315,11 @@ function LoginPageContent() {
       setNotice("パスワード再設定メールを送信しました。");
     } catch (e) {
       const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
-      setError(message.includes("Failed to fetch") ? "Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。" : message);
+      setError(
+        message.includes("Failed to fetch")
+          ? "Failed to fetch (supabase.auth.resetPasswordForEmail): ネットワークまたはブラウザ拡張機能の影響が疑われます。シークレットウィンドウで再試行してください。"
+          : message
+      );
     } finally {
       setLoading(false);
     }

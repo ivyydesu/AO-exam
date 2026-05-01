@@ -30,9 +30,10 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const [{ data: me }, { data: tutor }] = await Promise.all([
+    const [{ data: me }, { data: tutor }, { data: tutorProfile }] = await Promise.all([
       supabaseAdmin.from("profiles").select("id, role").eq("id", user.id).maybeSingle(),
-      supabaseAdmin.from("profiles").select("id, role, full_name").eq("id", safeTutorId).maybeSingle()
+      supabaseAdmin.from("profiles").select("id, role").eq("id", safeTutorId).maybeSingle(),
+      supabaseAdmin.from("tutor_profiles").select("nickname").eq("user_id", safeTutorId).maybeSingle()
     ]);
 
     if (!me || me.role !== "student") {
@@ -65,7 +66,8 @@ export async function POST(req: NextRequest) {
     if (existing?.id) {
       requestId = existing.id;
     } else {
-      const title = `事前相談: ${tutor.full_name ?? "先輩"}にメッセージ`;
+      const nickname = String(tutorProfile?.nickname ?? "").trim();
+      const title = `事前相談: ${nickname || "匿名ユーザー"}にメッセージ`;
       const { data: created, error: createError } = await supabaseAdmin
         .from("requests")
         .insert({

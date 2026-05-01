@@ -41,8 +41,9 @@ type ParsedMessage = Message & {
 
 type Counterparty = {
   id: string;
-  full_name: string;
+  display_name: string;
   school: string | null;
+  role?: string | null;
   avatar_url?: string;
 };
 
@@ -84,6 +85,12 @@ function statusLabel(status: string) {
     cancelled: "キャンセル"
   };
   return map[status] ?? status;
+}
+
+const MENTOR_ROLES = new Set(["tutor", "university", "mentor", "university_student", "college_student", "大学生", "先輩"]);
+
+function isMentorRole(role?: string | null) {
+  return MENTOR_ROLES.has(String(role ?? ""));
 }
 
 function formatSize(size: number) {
@@ -260,8 +267,8 @@ export default function ChatHomePage() {
         const [messageMetaRes, messageLegacyRes, profileRes, tutorProfileRes, detailRes] = await Promise.all([
           queryWithMeta,
           queryLegacy,
-          supabase.from("profiles").select("id, full_name, school").in("id", participantIds),
-          supabase.from("tutor_profiles").select("user_id, avatar_url").in("user_id", participantIds),
+          supabase.from("profiles").select("id, full_name, school, role").in("id", participantIds),
+          supabase.from("tutor_profiles").select("user_id, avatar_url, nickname").in("user_id", participantIds),
           supabase.from("request_details").select("request_id, support_method, requested_deadline").in("request_id", requestIds)
         ]);
 
@@ -288,12 +295,29 @@ export default function ChatHomePage() {
           }, {});
         setMessagesByRequest(groupedMessages);
 
-        const avatarMap = Object.fromEntries(((tutorProfileRes.data as Array<{ user_id: string; avatar_url: string | null }> | null) ?? []).map((item) => [item.user_id, item.avatar_url ?? ""]));
+        const tutorProfileMap = Object.fromEntries(
+          ((tutorProfileRes.data as Array<{ user_id: string; avatar_url: string | null; nickname: string | null }> | null) ?? []).map((item) => [
+            item.user_id,
+            { avatar_url: item.avatar_url ?? "", nickname: (item.nickname ?? "").trim() }
+          ])
+        );
         const profileMap = Object.fromEntries(
-          (((profileRes.data as Array<{ id: string; full_name: string; school: string | null }> | null) ?? []).map((item) => [
-            item.id,
-            { ...item, avatar_url: avatarMap[item.id] ?? "" }
-          ]))
+          (((profileRes.data as Array<{ id: string; full_name: string; school: string | null; role: string | null }> | null) ?? []).map((item) => {
+            const tutorProfile = tutorProfileMap[item.id];
+            const displayName = isMentorRole(item.role)
+              ? tutorProfile?.nickname || "匿名ユーザー"
+              : (item.full_name ?? "").trim() || "相手未設定";
+            return [
+              item.id,
+              {
+                id: item.id,
+                display_name: displayName,
+                school: item.school,
+                role: item.role,
+                avatar_url: tutorProfile?.avatar_url ?? ""
+              }
+            ];
+          }))
         );
         setProfiles(profileMap);
 
@@ -353,7 +377,7 @@ export default function ChatHomePage() {
       ? requests.filter((item) => {
           const otherId = userId === item.requester_id ? item.tutor_id : item.requester_id;
           const other = otherId ? profiles[otherId] : null;
-          return [item.title, other?.full_name, other?.school, statusLabel(item.status)]
+          return [item.title, other?.display_name, other?.school, statusLabel(item.status)]
             .filter(Boolean)
             .some((v) => String(v).toLowerCase().includes(q));
         })
@@ -598,15 +622,15 @@ export default function ChatHomePage() {
                 >
                   <div className="relative shrink-0">
                     {other?.avatar_url ? (
-                      <img src={other.avatar_url} alt={other.full_name} className="size-10 rounded-full object-cover sm:size-12" />
+                      <img src={other.avatar_url} alt={other.display_name} className="size-10 rounded-full object-cover sm:size-12" />
                     ) : (
-                      <div className="grid size-10 place-items-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600 sm:size-12">{(other?.full_name || "?").slice(0, 1)}</div>
+                      <div className="grid size-10 place-items-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600 sm:size-12">{(other?.display_name || "?").slice(0, 1)}</div>
                     )}
                     <span className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-white bg-[#00b884]" />
                   </div>
                   <div className="min-w-0 flex-1 justify-center">
                     <div className="mb-0.5 flex items-baseline justify-between gap-2">
-                      <span className="truncate text-[13px] font-semibold sm:text-sm">{other?.full_name || "相手未設定"}</span>
+                      <span className="truncate text-[13px] font-semibold sm:text-sm">{other?.display_name || "相手未設定"}</span>
                       <span className={`text-xs ${active ? "font-medium text-[#00b884]" : "text-gray-400"}`}>{latest ? formatDate(latest.created_at) : formatDate(item.created_at)}</span>
                     </div>
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -646,15 +670,15 @@ export default function ChatHomePage() {
                   </button>
                   <div className="relative">
                     {selectedOther?.avatar_url ? (
-                      <img src={selectedOther.avatar_url} alt={selectedOther.full_name} className="size-9 rounded-full object-cover ring-2 ring-white sm:size-10" />
+                      <img src={selectedOther.avatar_url} alt={selectedOther.display_name} className="size-9 rounded-full object-cover ring-2 ring-white sm:size-10" />
                     ) : (
-                      <div className="grid size-9 place-items-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600 sm:size-10">{(selectedOther?.full_name || "?").slice(0, 1)}</div>
+                      <div className="grid size-9 place-items-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600 sm:size-10">{(selectedOther?.display_name || "?").slice(0, 1)}</div>
                     )}
                     <span className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white bg-[#00b884]" />
                   </div>
                   <div>
                     <h1 className="flex items-center gap-1.5 text-sm font-bold sm:gap-2 sm:text-base">
-                      {selectedOther?.full_name || "相手未設定"}
+                      {selectedOther?.display_name || "相手未設定"}
                       <span className="max-w-[130px] truncate rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-normal text-gray-500 sm:max-w-none sm:text-xs">{selectedOther?.school || selectedRequest.title}</span>
                     </h1>
                     <p className="text-[10px] font-medium text-[#00b884] sm:text-xs">{statusLabel(selectedRequest.status)}</p>
@@ -738,16 +762,16 @@ export default function ChatHomePage() {
                       <div key={message.id} className={`flex max-w-[92%] gap-2.5 sm:max-w-[80%] sm:gap-3 ${mine ? "ml-auto flex-row-reverse" : ""}`}>
                         {!mine ? (
                           selectedOther?.avatar_url ? (
-                            <img src={selectedOther.avatar_url} alt={selectedOther.full_name} className="mt-1 size-7 shrink-0 rounded-full object-cover sm:size-8" />
+                            <img src={selectedOther.avatar_url} alt={selectedOther.display_name} className="mt-1 size-7 shrink-0 rounded-full object-cover sm:size-8" />
                           ) : (
-                            <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-600 sm:size-8 sm:text-xs">{(selectedOther?.full_name || "?").slice(0, 1)}</div>
+                            <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-600 sm:size-8 sm:text-xs">{(selectedOther?.display_name || "?").slice(0, 1)}</div>
                           )
                         ) : (
                           <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-[#dff7ef] text-[10px] font-bold text-[#00b884] sm:size-8 sm:text-xs">You</div>
                         )}
                         <div className={`flex flex-col gap-1 ${mine ? "items-end" : ""}`}>
                           <div className={`flex items-baseline gap-2 ${mine ? "flex-row-reverse" : ""}`}>
-                            {!mine ? <span className="text-xs font-bold">{selectedOther?.full_name || "相手"}</span> : null}
+                            {!mine ? <span className="text-xs font-bold">{selectedOther?.display_name || "相手"}</span> : null}
                             <span className="text-[10px] text-gray-400">{formatTime(message.created_at)}</span>
                             {mine && canDelete ? (
                               <button

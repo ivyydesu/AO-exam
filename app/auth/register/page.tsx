@@ -63,7 +63,7 @@ function RegisterPageContent() {
     } catch (e) {
       const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
-        setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
+        setError("Failed to fetch: ネットワークまたはSupabase接続で失敗しました。/auth/login の診断ツールを実行してください。");
       } else {
         setError(message);
       }

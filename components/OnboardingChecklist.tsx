@@ -36,6 +36,7 @@ type PersistedChecklistState = DragPosition & {
 
 const STORAGE_KEY = "onboarding-checklist:ui-state:v1";
 const COMPLETED_STORAGE_KEY_PREFIX = "onboarding-checklist:completed:v1";
+const SESSION_CLOSED_STORAGE_KEY = "onboarding-checklist:closed:v1";
 const CARD_WIDTH = 360;
 const DEFAULT_CARD_HEIGHT = 280;
 const WINDOW_MARGIN = 12;
@@ -76,6 +77,8 @@ export default function OnboardingChecklist() {
   const [position, setPosition] = useState<DragPosition | null>(null);
   const [dragBounds, setDragBounds] = useState<DragBounds>({ left: 0, top: 0, right: 0, bottom: 0 });
   const [hydrated, setHydrated] = useState(false);
+  const [isClosedBySession, setIsClosedBySession] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const dragControls = useDragControls();
   const x = useMotionValue(WINDOW_MARGIN);
@@ -108,6 +111,10 @@ export default function OnboardingChecklist() {
             setItems([]);
             setHideByCompletedFlag(false);
             setCompletedStorageKey(null);
+            setIsClosedBySession(false);
+          }
+          if (typeof window !== "undefined") {
+            window.sessionStorage.removeItem(SESSION_CLOSED_STORAGE_KEY);
           }
           return;
         }
@@ -297,6 +304,7 @@ export default function OnboardingChecklist() {
 
     let nextPosition = getFallbackPosition();
     let nextMinimized = false;
+    const isClosed = window.sessionStorage.getItem(SESSION_CLOSED_STORAGE_KEY) === "1";
 
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -311,6 +319,7 @@ export default function OnboardingChecklist() {
     }
 
     setIsMinimized(nextMinimized);
+    setIsClosedBySession(isClosed);
     setPosition(nextPosition);
     setHydrated(true);
   }, []);
@@ -351,6 +360,7 @@ export default function OnboardingChecklist() {
 
   if (hiddenOn || role === "admin" || role === null) return null;
   if (hideByCompletedFlag) return null;
+  if (isClosedBySession) return null;
   if (!hydrated || !position) return null;
 
   const requiredItems = items.filter((item) => item.required !== false);
@@ -361,6 +371,13 @@ export default function OnboardingChecklist() {
 
   return (
     <motion.div
+      initial={{ opacity: 1, y: 0 }}
+      animate={isClosing ? { opacity: 0, y: 18 } : { opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      onAnimationComplete={() => {
+        if (!isClosing) return;
+        setIsClosedBySession(true);
+      }}
       drag
       dragControls={dragControls}
       dragListener={false}
@@ -389,6 +406,22 @@ export default function OnboardingChecklist() {
               {loading ? "判定中..." : `${doneCount}/${items.length} 完了`}
             </p>
           </div>
+          <button
+            type="button"
+            aria-label="チェックリストを閉じる"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.sessionStorage.setItem(SESSION_CLOSED_STORAGE_KEY, "1");
+              }
+              setIsClosing(true);
+            }}
+            className="rounded-md px-2 py-0.5 text-base font-semibold leading-none text-[#9CA3AF] transition hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+          >
+            ×
+          </button>
           <button
             type="button"
             aria-label={isMinimized ? "チェックリストを展開" : "チェックリストを最小化"}

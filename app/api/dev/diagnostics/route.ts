@@ -7,20 +7,26 @@ export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  let isAdminCaller = false;
   try {
     await requireStrictAdminFromBearer(req);
+    isAdminCaller = true;
   } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    isAdminCaller = false;
   }
+
   const supabaseUrl = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
+  const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim();
   const lineLoginRedirectUri = (process.env.LINE_LOGIN_REDIRECT_URI ?? "").trim();
-  const env = {
+  const envPublic = {
     NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()),
+    NEXT_PUBLIC_APP_URL: Boolean(appUrl)
+  };
+  const envAdmin = {
     SUPABASE_SERVICE_ROLE_KEY: Boolean(serviceKey),
-    NEXT_PUBLIC_APP_URL: Boolean(appUrl),
     LINE_LOGIN_CHANNEL_ID: Boolean(process.env.LINE_LOGIN_CHANNEL_ID),
     LINE_LOGIN_CHANNEL_SECRET: Boolean(process.env.LINE_LOGIN_CHANNEL_SECRET),
     LINE_LOGIN_REDIRECT_URI: Boolean(lineLoginRedirectUri),
@@ -30,34 +36,60 @@ export async function GET(req: NextRequest) {
   };
 
   const checks: Record<string, string> = {};
+  let supabaseAuthHttpStatus: number | null = null;
+  let supabaseRestHttpStatus: number | null = null;
 
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { error } = await supabaseAdmin
-      .from("profiles")
-      .select("id", { head: true, count: "exact" });
-    checks.supabase = error ? `error: ${error.message}` : "ok";
+    if (!supabaseUrl || !anonKey) throw new Error("public supabase env missing");
+    const res = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+      headers: { apikey: anonKey }
+    });
+    supabaseAuthHttpStatus = res.status;
+    checks.supabase_auth = `http_${res.status}`;
   } catch (e) {
-    checks.supabase = `exception: ${e instanceof Error ? e.message : "unknown"}`;
+    checks.supabase_auth = `exception: ${e instanceof Error ? e.message : "unknown"}`;
   }
 
   try {
-    if (!supabaseUrl || !serviceKey) throw new Error("supabase env missing");
+    if (!supabaseUrl || !anonKey) throw new Error("public supabase env missing");
     const res = await fetch(`${supabaseUrl}/rest/v1/`, {
       headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`
       }
     });
+    supabaseRestHttpStatus = res.status;
     checks.supabase_rest = `http_${res.status}`;
   } catch (e) {
     checks.supabase_rest = `exception: ${e instanceof Error ? e.message : "unknown"}`;
   }
 
+  if (isAdminCaller) {
+    try {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { error } = await supabaseAdmin
+        .from("profiles")
+        .select("id", { head: true, count: "exact" });
+      checks.supabase_admin = error ? `error: ${error.message}` : "ok";
+    } catch (e) {
+      checks.supabase_admin = `exception: ${e instanceof Error ? e.message : "unknown"}`;
+    }
+  }
+
+  const env = isAdminCaller ? { ...envPublic, ...envAdmin } : envPublic;
+
+  const isSupabaseReachable =
+    (supabaseAuthHttpStatus !== null && supabaseAuthHttpStatus >= 200 && supabaseAuthHttpStatus < 500) &&
+    (supabaseRestHttpStatus !== null && supabaseRestHttpStatus >= 200 && supabaseRestHttpStatus < 500);
+
   return NextResponse.json({
-    ok: Object.values(env).every(Boolean),
+    ok: Object.values(envPublic).every(Boolean),
     nodeEnv: process.env.NODE_ENV,
+    isAdminCaller,
     env,
-    checks
+    checks,
+    isSupabaseReachable,
+    hint:
+      "supabase_auth/supabase_rest が http_2xx〜4xx なら到達は正常です。4xx は認証/権限エラーで、ネットワーク断ではありません。"
   });
 }

@@ -35,6 +35,25 @@ type TutorForm = {
   is_published: boolean;
 };
 
+type TutorProfilePayload = Partial<TutorForm> & {
+  role?: string | null;
+  line_user_id?: string | null;
+};
+
+type TutorSavePayload = {
+  full_name: string;
+  nickname: string;
+  school: string;
+  university: string;
+  accepted_school: string;
+  department: string;
+  seminar: string;
+  grade: string;
+  research_theme: string;
+  coaching_experience: string;
+  bio: string;
+};
+
 type VerificationStatus = {
   status: "pending" | "approved" | "rejected" | null;
   reason: string | null;
@@ -150,6 +169,42 @@ export default function ProfileSettingsPage() {
 
   const hasExplicitRole = (raw: unknown) => String(raw ?? "").trim().length > 0;
 
+  const mergeTutorFormForInit = (payload: TutorProfilePayload, prev: TutorForm): TutorForm => ({
+    ...prev,
+    full_name: payload.full_name ?? prev.full_name,
+    nickname: payload.nickname ?? prev.nickname,
+    school: payload.school ?? prev.school,
+    university: payload.university ?? prev.university,
+    accepted_school: payload.accepted_school ?? payload.school ?? prev.accepted_school ?? "",
+    avatar_url: payload.avatar_url ?? prev.avatar_url,
+    cover_url: payload.cover_url ?? prev.cover_url,
+    department: payload.department ?? prev.department,
+    seminar: payload.seminar ?? prev.seminar,
+    grade: payload.grade ?? prev.grade,
+    research_theme: payload.research_theme ?? prev.research_theme,
+    coaching_experience: payload.coaching_experience ?? prev.coaching_experience,
+    bio: payload.bio ?? prev.bio,
+    is_published: payload.is_published ?? prev.is_published
+  });
+
+  const buildTutorSavePayload = (source: TutorForm): TutorSavePayload => {
+    const acceptedSchool = source.accepted_school.trim();
+    const legacySchool = source.school.trim();
+    return {
+      full_name: source.full_name.trim(),
+      nickname: source.nickname.trim(),
+      school: acceptedSchool || legacySchool,
+      university: source.university.trim(),
+      accepted_school: acceptedSchool,
+      department: source.department.trim(),
+      seminar: source.seminar.trim(),
+      grade: source.grade.trim(),
+      research_theme: source.research_theme.trim(),
+      coaching_experience: source.coaching_experience.trim(),
+      bio: source.bio.trim()
+    };
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("tab");
@@ -195,7 +250,7 @@ export default function ProfileSettingsPage() {
 
         const profilePayload = await profileRes.json().catch(() => ({}));
         if (profileRes.ok && profilePayload.profile) {
-          setForm((prev) => ({ ...prev, ...(profilePayload.profile as TutorForm) }));
+          setForm((prev) => mergeTutorFormForInit(profilePayload.profile as TutorProfilePayload, prev));
           setIsLineConnected((prev) => prev || Boolean(profilePayload.profile.line_user_id));
           if (hasExplicitRole(profilePayload.profile.role)) {
             setUserRole(normalizeRole(profilePayload.profile.role));
@@ -212,7 +267,8 @@ export default function ProfileSettingsPage() {
               ...prev,
               full_name: fallbackProfile.full_name ?? prev.full_name,
               school: fallbackProfile.school ?? prev.school,
-              university: fallbackProfile.school ?? prev.university
+              university: fallbackProfile.school ?? prev.university,
+              accepted_school: fallbackProfile.school ?? prev.accepted_school ?? ""
             }));
             setIsLineConnected((prev) => prev || Boolean(fallbackProfile.line_user_id));
             if (hasExplicitRole(fallbackProfile.role)) {
@@ -298,9 +354,7 @@ export default function ProfileSettingsPage() {
 
   const onSaveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (loadingProfile) {
-      setLoadingProfile(false);
-    }
+    if (loadingProfile) return;
     setLoadingProfile(true);
     setError(null);
     setNotice(null);
@@ -311,18 +365,19 @@ export default function ProfileSettingsPage() {
     }
     try {
       const token = await authToken();
+      const savePayload = buildTutorSavePayload(form);
       const fd = new FormData();
-      fd.append("full_name", form.full_name);
-      fd.append("nickname", form.nickname);
-      fd.append("school", form.university);
-      fd.append("university", form.university);
-      fd.append("accepted_school", form.accepted_school);
-      fd.append("department", form.department);
-      fd.append("seminar", form.seminar);
-      fd.append("grade", form.grade);
-      fd.append("research_theme", form.research_theme);
-      fd.append("coaching_experience", form.coaching_experience);
-      fd.append("bio", form.bio);
+      fd.append("full_name", savePayload.full_name);
+      fd.append("nickname", savePayload.nickname);
+      fd.append("school", savePayload.school);
+      fd.append("university", savePayload.university);
+      fd.append("accepted_school", savePayload.accepted_school);
+      fd.append("department", savePayload.department);
+      fd.append("seminar", savePayload.seminar);
+      fd.append("grade", savePayload.grade);
+      fd.append("research_theme", savePayload.research_theme);
+      fd.append("coaching_experience", savePayload.coaching_experience);
+      fd.append("bio", savePayload.bio);
       if (avatarFile) fd.append("avatar", avatarFile);
       if (coverFile) fd.append("cover", coverFile);
 
@@ -334,14 +389,16 @@ export default function ProfileSettingsPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error ?? "プロフィール保存に失敗しました");
 
-      setForm((prev) => ({
-        ...prev,
-        ...(payload?.profile ?? {}),
-        avatar_url: payload?.profile?.avatar_url ? `${payload.profile.avatar_url}?t=${Date.now()}` : prev.avatar_url,
-        cover_url: payload?.profile?.cover_url ? `${payload.profile.cover_url}?t=${Date.now()}` : prev.cover_url,
-        // 公開/非公開は専用トグルAPIのみで更新する
-        is_published: prev.is_published
-      }));
+      setForm((prev) => {
+        const merged = mergeTutorFormForInit((payload?.profile ?? {}) as TutorProfilePayload, prev);
+        return {
+          ...merged,
+          avatar_url: payload?.profile?.avatar_url ? `${payload.profile.avatar_url}?t=${Date.now()}` : merged.avatar_url,
+          cover_url: payload?.profile?.cover_url ? `${payload.profile.cover_url}?t=${Date.now()}` : merged.cover_url,
+          // 公開/非公開は専用トグルAPIのみで更新する
+          is_published: prev.is_published
+        };
+      });
 
       setAvatarFile(null);
       setCoverFile(null);
@@ -723,7 +780,7 @@ export default function ProfileSettingsPage() {
 
                   <div className="flex-1 pt-2 text-center md:pt-12 md:text-left">
                     <h2 className="flex flex-wrap items-center justify-center gap-2 text-4xl font-bold leading-none text-[#111827] md:justify-start lg:text-5xl">
-                      {form.nickname?.trim() || form.full_name || "未設定"}
+                      {form.nickname?.trim() || "匿名ユーザー"}
                       {verification.status === "approved" ? (
                         <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                           学生証認証済み

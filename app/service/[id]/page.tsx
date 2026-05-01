@@ -27,7 +27,7 @@ const defaultAvatar = "/avatars/user-default-gray.svg";
 
 function parseBulletItems(raw: string, fallback: string[]) {
   const normalized = raw
-    .split(/\r?\n|・|•|▪|●|;/)
+    .split(/\r?\n|・|•|▪|●|;|,|、/)
     .map((line) => line.trim().replace(/^[-・•▪●]\s*/, ""))
     .filter(Boolean);
   if (normalized.length > 0) return normalized.slice(0, 4);
@@ -95,6 +95,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           department: string;
           grade: string;
           school: string;
+          accepted_school?: string;
           researchTheme: string;
           coachingExperience: string;
           avatar: string;
@@ -110,7 +111,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
           university: item.university || "未設定",
           department: item.department || "未設定",
           year: item.grade || "未設定",
-          acceptedUniversities: item.school ? [item.school] : [],
+          acceptedUniversities: parseBulletItems(item.accepted_school || item.school || "", ["未設定"]),
           theme: item.researchTheme || "未設定",
           experience: item.coachingExperience || "未設定",
           rating: Number(item.rating ?? 0),
@@ -254,7 +255,7 @@ export default function ServicePage({ params }: { params: { id: string } }) {
                     </div>
                     <div className="rounded-lg bg-gray-50 p-3">
                       <span className="mb-1 block text-xs text-gray-500">合格校</span>
-                      <span className="font-medium text-gray-800">{tutor.acceptedUniversities[0] || "未設定"}</span>
+                      <span className="font-medium text-gray-800">{tutor.acceptedUniversities.join(" / ") || "未設定"}</span>
                     </div>
                   </div>
                 </div>
