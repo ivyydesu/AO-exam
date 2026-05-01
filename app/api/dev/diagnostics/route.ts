@@ -63,6 +63,39 @@ export async function GET(req: NextRequest) {
     checks.supabase_rest = `exception: ${e instanceof Error ? e.message : "unknown"}`;
   }
 
+  try {
+    if (!supabaseUrl || !anonKey) throw new Error("public supabase env missing");
+    const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: "diagnostics-user-does-not-exist@example.com",
+        password: "invalid-password-for-probe"
+      })
+    });
+
+    let detail = "";
+    try {
+      const payload = await res.json();
+      const message = typeof payload?.message === "string" ? payload.message : "";
+      const errorDescription =
+        typeof payload?.error_description === "string" ? payload.error_description : "";
+      detail = (message || errorDescription).slice(0, 120);
+    } catch {
+      detail = "";
+    }
+
+    checks.supabase_auth_password_probe = detail
+      ? `http_${res.status} ${detail}`
+      : `http_${res.status}`;
+  } catch (e) {
+    checks.supabase_auth_password_probe = `exception: ${e instanceof Error ? e.message : "unknown"}`;
+  }
+
   if (isAdminCaller) {
     try {
       const supabaseAdmin = getSupabaseAdmin();
