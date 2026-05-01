@@ -4,7 +4,6 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
-import { isAllowedAdminEmail } from "../../../lib/auth/adminAllowlist";
 import { getPublicAppUrl } from "../../../lib/auth/appUrl";
 import {
   EMAIL_SEND_COOLDOWN_SECONDS,
@@ -105,51 +104,25 @@ function LoginPageContent() {
     return () => window.clearInterval(id);
   }, []);
 
-  const ensureRole = async (
-    userId: string,
-    userEmail?: string | null,
-    registeredRole?: unknown
-  ): Promise<"student" | "tutor" | "admin"> => {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabaseが初期化されていません");
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, role, full_name")
-      .eq("id", userId)
-      .maybeSingle();
+  const ensureRoleViaApi = async (accessToken: string): Promise<CanonicalRole> => {
+    const res = await fetch("/api/auth/profile/sync", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ roleHint })
+    });
 
-    if (profileError) throw profileError;
-
-    const normalizedRegisteredRole = normalizeRole(registeredRole);
-
-    if (!profile) {
-      const createRole =
-        normalizedRegisteredRole === "admin" && !isAllowedAdminEmail(userEmail)
-          ? roleHint
-          : (normalizedRegisteredRole ?? roleHint);
-      const fallbackName = (userEmail?.split("@")[0] ?? "ユニブリ User").slice(0, 40);
-      const { error: insertError } = await supabase.from("profiles").insert({
-        id: userId,
-        full_name: fallbackName,
-        role: createRole,
-        school: null
-      });
-      if (insertError) throw new Error(`プロフィール初期化に失敗しました: ${insertError.message}`);
-      return createRole;
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload.error ?? "プロフィール同期に失敗しました");
     }
 
-    const normalizedProfileRole = normalizeRole(profile.role);
-    let resolvedRole: CanonicalRole = normalizedProfileRole ?? normalizedRegisteredRole ?? roleHint;
-    if (resolvedRole === "admin" && !isAllowedAdminEmail(userEmail)) {
-      resolvedRole = "student";
+    const resolvedRole = normalizeRole(payload.role);
+    if (!resolvedRole) {
+      throw new Error("プロフィール同期結果が不正です");
     }
-
-    const currentProfileRole = String(profile.role ?? "").trim();
-    if (currentProfileRole !== resolvedRole) {
-      const { error: updateError } = await supabase.from("profiles").update({ role: resolvedRole }).eq("id", userId);
-      if (updateError) throw new Error(`プロフィール権限の同期に失敗しました: ${updateError.message}`);
-    }
-
     return resolvedRole;
   };
 
@@ -174,7 +147,9 @@ function LoginPageContent() {
           throw new Error(exchangeError?.message ?? "認証コードの処理に失敗しました");
         }
 
-        const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
+        const accessToken = data.session?.access_token;
+        if (!accessToken) throw new Error("セッション取得に失敗しました");
+        const resolvedRole = await ensureRoleViaApi(accessToken);
         const nextPath = normalizeNextPath(searchParams.get("next"));
         const destination = resolvedRole === "admin" ? getLandingPath(resolvedRole) : nextPath;
 
@@ -219,8 +194,10 @@ function LoginPageContent() {
       if (!data.user.email_confirmed_at) {
         throw new Error("メール認証が未完了です。先にメール内リンクを開いてください。");
       }
-      failedStep = "profiles role sync (ensureRole)";
-      const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
+      failedStep = "api/auth/profile/sync";
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error("セッション取得に失敗しました");
+      const resolvedRole = await ensureRoleViaApi(accessToken);
       const normalizedMetaRole = normalizeRole(data.user.user_metadata?.role);
       if (normalizedMetaRole !== resolvedRole) {
         failedStep = "supabase.auth.updateUser";
