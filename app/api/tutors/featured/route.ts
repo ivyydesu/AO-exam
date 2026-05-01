@@ -37,6 +37,15 @@ function isMissingColumnError(message: string, column: string) {
   );
 }
 
+function isMissingCreatedAtError(message: string) {
+  return isMissingColumnError(message, "created_at");
+}
+
+function isInvalidRoleEnumError(message: string) {
+  const lower = message.toLowerCase();
+  return lower.includes("invalid input value for enum") && lower.includes("role");
+}
+
 function pickTutorProfile(value: ProfileRow["tutor_profiles"]): TutorProfileRow | null {
   if (!value) return null;
   if (Array.isArray(value)) return value[0] ?? null;
@@ -73,41 +82,90 @@ export async function GET(request: Request) {
       return NextResponse.json({ items: [] });
     }
 
-    const queryWithAcceptedSchool = () =>
-      supabaseAdmin
+    const queryWithAcceptedSchool = (useCreatedAtOrder: boolean, roles: string[]) => {
+      let query = supabaseAdmin
         .from("profiles")
         .select(
           "id, school, role, tutor_profiles!inner(user_id, nickname, avatar_url, university, accepted_school, department, seminar, grade, research_theme, coaching_experience, bio)"
         )
-        .in("role", MENTOR_ROLES)
-        .in("id", verifiedTutorIds)
-        .order("created_at", { ascending: false })
+        .in("role", roles)
+        .in("id", verifiedTutorIds);
+      if (useCreatedAtOrder) {
+        query = query.order("created_at", { ascending: false });
+      }
+      return query
         .order("id", { ascending: false })
         .range(offset, offset + limit - 1);
+    };
 
-    const queryWithoutAcceptedSchool = () =>
-      supabaseAdmin
+    const queryWithoutAcceptedSchool = (useCreatedAtOrder: boolean, roles: string[]) => {
+      let query = supabaseAdmin
         .from("profiles")
         .select(
           "id, school, role, tutor_profiles!inner(user_id, nickname, avatar_url, university, department, seminar, grade, research_theme, coaching_experience, bio)"
         )
-        .in("role", MENTOR_ROLES)
-        .in("id", verifiedTutorIds)
-        .order("created_at", { ascending: false })
+        .in("role", roles)
+        .in("id", verifiedTutorIds);
+      if (useCreatedAtOrder) {
+        query = query.order("created_at", { ascending: false });
+      }
+      return query
         .order("id", { ascending: false })
         .range(offset, offset + limit - 1);
+    };
+
+    const runProfilesQuery = async () => {
+      const fallbackRoles = ["tutor"];
+      let result = await queryWithAcceptedSchool(true, MENTOR_ROLES);
+      if (!result.error) return result;
+
+      if (isMissingColumnError(result.error.message, "accepted_school")) {
+        result = await queryWithoutAcceptedSchool(true, MENTOR_ROLES);
+        if (!result.error) return result;
+      }
+
+      if (result.error && isMissingCreatedAtError(result.error.message)) {
+        const retryWithAccepted = await queryWithAcceptedSchool(false, MENTOR_ROLES);
+        if (!retryWithAccepted.error) return retryWithAccepted;
+
+        if (retryWithAccepted.error && isMissingColumnError(retryWithAccepted.error.message, "accepted_school")) {
+          return queryWithoutAcceptedSchool(false, MENTOR_ROLES);
+        }
+        return retryWithAccepted;
+      }
+
+      if (result.error && isInvalidRoleEnumError(result.error.message)) {
+        const retryWithAccepted = await queryWithAcceptedSchool(true, fallbackRoles);
+        if (!retryWithAccepted.error) return retryWithAccepted;
+
+        if (retryWithAccepted.error && isMissingColumnError(retryWithAccepted.error.message, "accepted_school")) {
+          return queryWithoutAcceptedSchool(true, fallbackRoles);
+        }
+
+        if (retryWithAccepted.error && isMissingCreatedAtError(retryWithAccepted.error.message)) {
+          const retryWithoutCreatedAt = await queryWithAcceptedSchool(false, fallbackRoles);
+          if (!retryWithoutCreatedAt.error) return retryWithoutCreatedAt;
+          if (
+            retryWithoutCreatedAt.error &&
+            isMissingColumnError(retryWithoutCreatedAt.error.message, "accepted_school")
+          ) {
+            return queryWithoutAcceptedSchool(false, fallbackRoles);
+          }
+          return retryWithoutCreatedAt;
+        }
+
+        return retryWithAccepted;
+      }
+
+      return result;
+    };
 
     let profiles: ProfileRow[] | null = null;
     let profileError: { message: string } | null = null;
 
-    const firstResult = await queryWithAcceptedSchool();
-    profiles = (firstResult.data as ProfileRow[] | null) ?? null;
-    profileError = firstResult.error;
-    if (profileError && isMissingColumnError(profileError.message, "accepted_school")) {
-      const fallback = await queryWithoutAcceptedSchool();
-      profiles = (fallback.data as ProfileRow[] | null) ?? null;
-      profileError = fallback.error;
-    }
+    const queryResult = await runProfilesQuery();
+    profiles = (queryResult.data as ProfileRow[] | null) ?? null;
+    profileError = queryResult.error;
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 400 });
