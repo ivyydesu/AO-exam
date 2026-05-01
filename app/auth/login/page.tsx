@@ -205,10 +205,12 @@ function LoginPageContent() {
     event.preventDefault();
     setError(null);
     setLoading(true);
+    let failedStep = "supabase.auth.signInWithPassword";
     try {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Supabaseが初期化されていません");
 
+      failedStep = "supabase.auth.signInWithPassword";
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -217,9 +219,11 @@ function LoginPageContent() {
       if (!data.user.email_confirmed_at) {
         throw new Error("メール認証が未完了です。先にメール内リンクを開いてください。");
       }
+      failedStep = "profiles role sync (ensureRole)";
       const resolvedRole = await ensureRole(data.user.id, data.user.email, data.user.user_metadata?.role);
       const normalizedMetaRole = normalizeRole(data.user.user_metadata?.role);
       if (normalizedMetaRole !== resolvedRole) {
+        failedStep = "supabase.auth.updateUser";
         await supabase.auth
           .updateUser({
             data: {
@@ -248,11 +252,11 @@ function LoginPageContent() {
       const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
         setError(
-          "Failed to fetch: Supabase接続に失敗しました。/api/dev/diagnostics を確認し、" +
-          "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY の本番設定を見直してください。"
+          `Failed to fetch (${failedStep}): ネットワーク/CORS/ブラウザブロックの可能性があります。` +
+          "シークレットウィンドウ・拡張機能OFFを試し、解消しない場合はこの全文を運営へ共有してください。"
         );
       } else {
-        setError(message);
+        setError(`${message} (at: ${failedStep})`);
       }
     } finally {
       setLoading(false);
