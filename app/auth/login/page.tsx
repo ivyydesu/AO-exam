@@ -247,7 +247,10 @@ function LoginPageContent() {
     } catch (e) {
       const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
       if (message.includes("Failed to fetch")) {
-        setError("Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。");
+        setError(
+          "Failed to fetch: Supabase接続に失敗しました。/api/dev/diagnostics を確認し、" +
+          "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY の本番設定を見直してください。"
+        );
       } else {
         setError(message);
       }
@@ -274,7 +277,11 @@ function LoginPageContent() {
       setNotice("パスワード再設定メールを送信しました。");
     } catch (e) {
       const message = normalizeAuthErrorMessage(e instanceof Error ? e.message : "Failed to fetch");
-      setError(message.includes("Failed to fetch") ? "Failed to fetch: 開発サーバー停止かAPIエラーです。診断APIを実行してください。" : message);
+      setError(
+        message.includes("Failed to fetch")
+          ? "Failed to fetch: Supabase接続に失敗しました。/api/dev/diagnostics と本番環境変数を確認してください。"
+          : message
+      );
     } finally {
       setLoading(false);
     }
