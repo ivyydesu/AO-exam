@@ -22,6 +22,11 @@ type ProfileRow = {
   tutor_profiles: TutorProfileRow | TutorProfileRow[] | null;
 };
 
+type ProfileQueryResult = {
+  data: ProfileRow[] | null;
+  error: { message: string } | null;
+};
+
 const MENTOR_ROLES = ["tutor", "university", "mentor", "university_student", "college_student", "大学生", "先輩"];
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 30;
@@ -44,6 +49,13 @@ function isMissingCreatedAtError(message: string) {
 function isInvalidRoleEnumError(message: string) {
   const lower = message.toLowerCase();
   return lower.includes("invalid input value for enum") && lower.includes("role");
+}
+
+function toProfileQueryResult(response: { data: unknown; error: { message: string } | null }): ProfileQueryResult {
+  return {
+    data: (response.data as ProfileRow[] | null) ?? null,
+    error: response.error ? { message: response.error.message } : null
+  };
 }
 
 function pickTutorProfile(value: ProfileRow["tutor_profiles"]): TutorProfileRow | null {
@@ -114,42 +126,42 @@ export async function GET(request: Request) {
         .range(offset, offset + limit - 1);
     };
 
-    const runProfilesQuery = async () => {
+    const runProfilesQuery = async (): Promise<ProfileQueryResult> => {
       const fallbackRoles = ["tutor"];
-      let result = await queryWithAcceptedSchool(true, MENTOR_ROLES);
+      let result = toProfileQueryResult(await queryWithAcceptedSchool(true, MENTOR_ROLES));
       if (!result.error) return result;
 
       if (isMissingColumnError(result.error.message, "accepted_school")) {
-        result = await queryWithoutAcceptedSchool(true, MENTOR_ROLES);
+        result = toProfileQueryResult(await queryWithoutAcceptedSchool(true, MENTOR_ROLES));
         if (!result.error) return result;
       }
 
       if (result.error && isMissingCreatedAtError(result.error.message)) {
-        const retryWithAccepted = await queryWithAcceptedSchool(false, MENTOR_ROLES);
+        const retryWithAccepted = toProfileQueryResult(await queryWithAcceptedSchool(false, MENTOR_ROLES));
         if (!retryWithAccepted.error) return retryWithAccepted;
 
         if (retryWithAccepted.error && isMissingColumnError(retryWithAccepted.error.message, "accepted_school")) {
-          return queryWithoutAcceptedSchool(false, MENTOR_ROLES);
+          return toProfileQueryResult(await queryWithoutAcceptedSchool(false, MENTOR_ROLES));
         }
         return retryWithAccepted;
       }
 
       if (result.error && isInvalidRoleEnumError(result.error.message)) {
-        const retryWithAccepted = await queryWithAcceptedSchool(true, fallbackRoles);
+        const retryWithAccepted = toProfileQueryResult(await queryWithAcceptedSchool(true, fallbackRoles));
         if (!retryWithAccepted.error) return retryWithAccepted;
 
         if (retryWithAccepted.error && isMissingColumnError(retryWithAccepted.error.message, "accepted_school")) {
-          return queryWithoutAcceptedSchool(true, fallbackRoles);
+          return toProfileQueryResult(await queryWithoutAcceptedSchool(true, fallbackRoles));
         }
 
         if (retryWithAccepted.error && isMissingCreatedAtError(retryWithAccepted.error.message)) {
-          const retryWithoutCreatedAt = await queryWithAcceptedSchool(false, fallbackRoles);
+          const retryWithoutCreatedAt = toProfileQueryResult(await queryWithAcceptedSchool(false, fallbackRoles));
           if (!retryWithoutCreatedAt.error) return retryWithoutCreatedAt;
           if (
             retryWithoutCreatedAt.error &&
             isMissingColumnError(retryWithoutCreatedAt.error.message, "accepted_school")
           ) {
-            return queryWithoutAcceptedSchool(false, fallbackRoles);
+            return toProfileQueryResult(await queryWithoutAcceptedSchool(false, fallbackRoles));
           }
           return retryWithoutCreatedAt;
         }
@@ -164,7 +176,7 @@ export async function GET(request: Request) {
     let profileError: { message: string } | null = null;
 
     const queryResult = await runProfilesQuery();
-    profiles = (queryResult.data as ProfileRow[] | null) ?? null;
+    profiles = queryResult.data ?? null;
     profileError = queryResult.error;
 
     if (profileError) {
