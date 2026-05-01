@@ -1,15 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
-type TargetRole = "all" | "student" | "tutor";
+type TargetRole = "all" | "student" | "tutor" | "specific_tutor";
+
+type TutorItem = {
+  id: string;
+  full_name: string;
+  school: string | null;
+};
 
 const TARGET_ROLE_LABELS: Record<TargetRole, string> = {
   all: "すべてのユーザー",
   student: "生徒のみ",
-  tutor: "先輩メンターのみ"
+  tutor: "先輩メンターのみ",
+  specific_tutor: "特定の先輩メンター"
 };
 
 export default function AdminBroadcastPage() {
@@ -17,6 +24,9 @@ export default function AdminBroadcastPage() {
   const [body, setBody] = useState("");
   const [link, setLink] = useState("");
   const [targetRole, setTargetRole] = useState<TargetRole>("all");
+  const [targetTutorId, setTargetTutorId] = useState("");
+  const [tutors, setTutors] = useState<TutorItem[]>([]);
+  const [isLoadingTutors, setIsLoadingTutors] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -30,6 +40,43 @@ export default function AdminBroadcastPage() {
 
     return { Authorization: `Bearer ${data.session.access_token}` };
   };
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadTutors = async () => {
+      setIsLoadingTutors(true);
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch("/api/admin/users/list?role=tutor", { headers });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(payload.error ?? "先輩一覧の取得に失敗しました");
+        }
+
+        if (!isActive) return;
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        const normalized: TutorItem[] = items
+          .filter((item) => typeof item?.id === "string")
+          .map((item) => ({
+            id: String(item.id),
+            full_name: typeof item.full_name === "string" && item.full_name.trim() ? item.full_name : "名前未設定",
+            school: typeof item.school === "string" ? item.school : null
+          }));
+        setTutors(normalized);
+      } catch {
+        if (!isActive) return;
+        setTutors([]);
+      } finally {
+        if (isActive) setIsLoadingTutors(false);
+      }
+    };
+
+    loadTutors();
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,7 +92,16 @@ export default function AdminBroadcastPage() {
       return;
     }
 
-    const targetLabel = TARGET_ROLE_LABELS[targetRole];
+    if (targetRole === "specific_tutor" && !targetTutorId) {
+      setErrorMessage("送信先の先輩メンターを選択してください。");
+      return;
+    }
+
+    const selectedTutor = tutors.find((item) => item.id === targetTutorId);
+    const targetLabel =
+      targetRole === "specific_tutor"
+        ? `先輩メンター: ${selectedTutor?.full_name ?? "未選択"}`
+        : TARGET_ROLE_LABELS[targetRole];
     const confirmed = window.confirm(`本当に【${targetLabel}】に送信しますか？`);
     if (!confirmed) return;
 
@@ -62,7 +118,8 @@ export default function AdminBroadcastPage() {
           title: trimmedTitle,
           body: trimmedBody,
           link: trimmedLink || null,
-          targetRole
+          targetRole,
+          targetUserId: targetRole === "specific_tutor" ? targetTutorId : null
         })
       });
 
@@ -184,8 +241,39 @@ export default function AdminBroadcastPage() {
                 />
                 先輩メンターのみ
               </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-[#111827]">
+                <input
+                  type="radio"
+                  name="targetRole"
+                  value="specific_tutor"
+                  checked={targetRole === "specific_tutor"}
+                  onChange={() => setTargetRole("specific_tutor")}
+                  className="h-4 w-4 accent-[#10B981]"
+                />
+                特定の先輩メンター
+              </label>
             </div>
           </fieldset>
+
+          {targetRole === "specific_tutor" ? (
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[#111827]">送信先の先輩メンター</span>
+              <select
+                value={targetTutorId}
+                onChange={(event) => setTargetTutorId(event.target.value)}
+                className="w-full rounded-xl border border-[#D1D5DB] bg-white px-4 py-2.5 text-sm outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
+                disabled={isLoadingTutors}
+              >
+                <option value="">{isLoadingTutors ? "読み込み中..." : "先輩メンターを選択してください"}</option>
+                {tutors.map((tutor) => (
+                  <option key={tutor.id} value={tutor.id}>
+                    {tutor.full_name}
+                    {tutor.school ? ` (${tutor.school})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <button
             type="submit"

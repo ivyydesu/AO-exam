@@ -12,6 +12,16 @@ type NotifyBody = {
   message?: string;
 };
 
+const TUTOR_ROLES = new Set([
+  "tutor",
+  "university",
+  "mentor",
+  "university_student",
+  "college_student",
+  "大学生",
+  "先輩"
+]);
+
 export async function POST(req: NextRequest) {
   try {
     const secret = req.headers.get("x-internal-secret") ?? "";
@@ -45,7 +55,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Target user not found" }, { status: 404 });
     }
 
-    if (profile.role !== body.targetRole) {
+    const roleMatched =
+      body.targetRole === "tutor" ? TUTOR_ROLES.has(profile.role) : profile.role === body.targetRole;
+    if (!roleMatched) {
       return NextResponse.json({ error: "Target role mismatch" }, { status: 400 });
     }
 

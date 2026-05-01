@@ -3,18 +3,21 @@ import { requireStrictAdminFromBearer } from "../../../../lib/auth/requireStrict
 import { assertTrustedOrigin } from "../../../../lib/security/csrf";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 
-type TargetRole = "all" | "student" | "tutor";
+type TargetRole = "all" | "student" | "tutor" | "specific_tutor";
 
 type BroadcastBody = {
   title?: string;
   body?: string;
   link?: string | null;
   targetRole?: TargetRole;
+  targetUserId?: string | null;
 };
 
 type ProfileIdRow = {
   id: string;
 };
+
+const TUTOR_ROLES = ["tutor", "university", "mentor", "university_student", "college_student", "大学生", "先輩"];
 
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = [];
@@ -42,15 +45,25 @@ export async function POST(req: NextRequest) {
     const body = payload.body?.trim() ?? "";
     const link = payload.link?.trim() || null;
     const targetRole: TargetRole =
-      payload.targetRole === "student" || payload.targetRole === "tutor" ? payload.targetRole : "all";
+      payload.targetRole === "student" || payload.targetRole === "tutor" || payload.targetRole === "specific_tutor"
+        ? payload.targetRole
+        : "all";
+    const targetUserId = payload.targetUserId?.trim() || null;
 
     if (!title || !body) {
       return NextResponse.json({ error: "title and body are required" }, { status: 400 });
     }
 
     let usersQuery = supabaseAdmin.from("profiles").select("id");
-    if (targetRole === "student" || targetRole === "tutor") {
+    if (targetRole === "student") {
       usersQuery = usersQuery.eq("role", targetRole);
+    } else if (targetRole === "tutor") {
+      usersQuery = usersQuery.in("role", TUTOR_ROLES);
+    } else if (targetRole === "specific_tutor") {
+      if (!targetUserId) {
+        return NextResponse.json({ error: "targetUserId is required for specific_tutor" }, { status: 400 });
+      }
+      usersQuery = usersQuery.eq("id", targetUserId).in("role", TUTOR_ROLES);
     }
 
     const { data: users, error: usersError } = await usersQuery;
