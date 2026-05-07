@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
@@ -12,8 +11,9 @@ type StripeConnectState = {
   payoutsEnabled: boolean;
 };
 
+const normalizeRole = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
 export default function PayoutSettingsPage() {
-  const router = useRouter();
   const [state, setState] = useState<StripeConnectState>({
     connected: false,
     accountId: null,
@@ -44,12 +44,30 @@ export default function PayoutSettingsPage() {
       const { data: sessionData } = await supabase.auth.getSession();
       const uid = sessionData.session?.user.id;
       if (!uid) throw new Error("ログインが必要です");
+      const sessionRole =
+        normalizeRole(sessionData.session.user.user_metadata?.role) ||
+        normalizeRole(sessionData.session.user.app_metadata?.role);
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
-      const isTutor = profile?.role === "tutor";
+      const profileRole = normalizeRole(profile?.role);
+      const resolvedRole = profileRole || sessionRole;
+      if (!resolvedRole) {
+        console.warn("Payout setup role resolution failed: role is missing from profile and session", {
+          userId: uid,
+          profileRole: profile?.role ?? null,
+          sessionRole: sessionData.session.user.user_metadata?.role ?? sessionData.session.user.app_metadata?.role ?? null
+        });
+        throw new Error("データの読み込みに失敗しました");
+      }
+      const isTutor = resolvedRole === "tutor";
       setAllowed(isTutor);
       if (!isTutor) {
-        router.replace("/profile/settings?tab=manage");
-        setLoading(false);
+        console.warn("Payout setup access blocked: non-tutor role", {
+          userId: uid,
+          profileRole: profile?.role ?? null,
+          sessionRole: sessionData.session.user.user_metadata?.role ?? sessionData.session.user.app_metadata?.role ?? null,
+          resolvedRole
+        });
+        setError("このページは大学生メンターアカウントのみ利用できます。");
         return;
       }
       const res = await fetch("/api/stripe/connect/status", { headers });
@@ -90,11 +108,26 @@ export default function PayoutSettingsPage() {
     }
   };
 
-  if (loading || allowed !== true) {
+  if (loading) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
         <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-sm">
           <p className="text-sm text-[#6B7280]">読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (allowed !== true) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-8">
+        <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-sm">
+          {error ? <p className="text-sm text-red-700">{error}</p> : <p className="text-sm text-[#6B7280]">データの読み込みに失敗しました</p>}
+          <div className="mt-4">
+            <Link href="/profile/settings?tab=manage" className="text-sm font-semibold text-[#10B981] hover:underline">
+              設定画面へ戻る
+            </Link>
+          </div>
         </div>
       </div>
     );

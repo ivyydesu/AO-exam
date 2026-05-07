@@ -4,7 +4,7 @@
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` が Production 用
 - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` が Production 用
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` が漏洩していない（Vercel のみ）
-- [ ] `STRIPE_SECRET_KEY` が本番鍵 (`sk_live_...`)
+- [ ] `STRIPE_SECRET_KEY` がライブ用シークレットキー
 - [ ] `NEXT_PUBLIC_APP_URL` が本番ドメイン
 - [ ] LINE Developers の Login channel に `https://<本番ドメイン>/api/line/connect/callback` を Callback URL として登録
 - [ ] `PLATFORM_FEE_PERCENT` を運用値で固定

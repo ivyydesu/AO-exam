@@ -1,6 +1,8 @@
 node_modules/
 .env
 .env.local
+.env.development
+.env.production
 
 .next/
 tsconfig.tsbuildinfo

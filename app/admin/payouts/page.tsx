@@ -77,7 +77,7 @@ export default function AdminPayoutsPage() {
 
         {stripeMode !== "live" ? (
           <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            現在はテストモードです。本番利用するには Vercel の環境変数 `STRIPE_SECRET_KEY` を `sk_live_...` に変更して再デプロイしてください。
+            現在はテストモードです。本番利用するには Vercel の環境変数 `STRIPE_SECRET_KEY` をライブ用シークレットキーに変更して再デプロイしてください。
           </div>
         ) : (
           <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -94,4 +94,3 @@ export default function AdminPayoutsPage() {
     </div>
   );
 }
-

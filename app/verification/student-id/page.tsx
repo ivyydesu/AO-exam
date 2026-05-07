@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
 const MAX_IMAGE_BYTES = 3_145_728;
@@ -18,8 +17,9 @@ type Verification = {
   reviewed_at: string | null;
 };
 
+const normalizeRole = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
 export default function StudentIdVerificationPage() {
-  const router = useRouter();
   const [verification, setVerification] = useState<Verification | null>(null);
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [frontFile, setFrontFile] = useState<File | null>(null);
@@ -28,6 +28,7 @@ export default function StudentIdVerificationPage() {
   const [graduationYear, setGraduationYear] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const isOverSizeLimit = (file: File | null) => Boolean(file && file.size > MAX_IMAGE_BYTES);
@@ -66,6 +67,8 @@ export default function StudentIdVerificationPage() {
   };
 
   const loadStatus = async () => {
+    setIsInitialLoading(true);
+    setError(null);
     try {
       const supabase = getSupabaseClient();
       if (!supabase) {
@@ -78,11 +81,31 @@ export default function StudentIdVerificationPage() {
         return;
       }
       const token = sessionData.session.access_token;
+      const sessionRole =
+        normalizeRole(sessionData.session.user.user_metadata?.role) ||
+        normalizeRole(sessionData.session.user.app_metadata?.role);
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", sessionData.session.user.id).maybeSingle();
-      const isTutor = profile?.role === "tutor";
+      const profileRole = normalizeRole(profile?.role);
+      const resolvedRole = profileRole || sessionRole;
+      if (!resolvedRole) {
+        console.warn("Student ID page role resolution failed: role is missing from profile and session", {
+          userId: sessionData.session.user.id,
+          profileRole: profile?.role ?? null,
+          sessionRole: sessionData.session.user.user_metadata?.role ?? sessionData.session.user.app_metadata?.role ?? null
+        });
+        setError("データの読み込みに失敗しました");
+        return;
+      }
+      const isTutor = resolvedRole === "tutor";
       setAllowed(isTutor);
       if (!isTutor) {
-        router.replace("/profile/settings?tab=manage");
+        console.warn("Student ID page access blocked: non-tutor role", {
+          userId: sessionData.session.user.id,
+          profileRole: profile?.role ?? null,
+          sessionRole: sessionData.session.user.user_metadata?.role ?? sessionData.session.user.app_metadata?.role ?? null,
+          resolvedRole
+        });
+        setError("このページは大学生メンターアカウントのみ利用できます。");
         return;
       }
 
@@ -96,7 +119,10 @@ export default function StudentIdVerificationPage() {
       const payload = (await res.json().catch(() => null)) as { verification?: Verification | null } | null;
       setVerification(payload?.verification ?? null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "状態取得に失敗しました");
+      console.error("Failed to load student verification data:", e);
+      setError("データの読み込みに失敗しました");
+    } finally {
+      setIsInitialLoading(false);
     }
   };
 
@@ -178,9 +204,24 @@ export default function StudentIdVerificationPage() {
   };
 
   return (
+    isInitialLoading ? (
+      <div className="mx-auto max-w-2xl">
+        <div className="card grid gap-6 p-8">
+          <p className="text-sm text-sea/70">読み込み中...</p>
+        </div>
+      </div>
+    ) : allowed === false ? (
+      <div className="mx-auto max-w-2xl">
+        <div className="card grid gap-6 p-8">
+          <p className="text-sm text-accent">{error ?? "このページは大学生メンターアカウントのみ利用できます。"}</p>
+          <Link href="/profile/settings?tab=manage" className="text-sm font-semibold text-sea hover:underline">
+            設定画面へ戻る
+          </Link>
+        </div>
+      </div>
+    ) : (
     <div className="mx-auto max-w-2xl">
       <div className="card grid gap-6 p-8">
-        {allowed === false ? null : null}
         <div>
           <h1 className="text-2xl font-semibold text-sea">学生証認証</h1>
           <p className="mt-2 text-sm text-sea/70">
@@ -249,5 +290,6 @@ export default function StudentIdVerificationPage() {
         <Link href="/home" className="text-sm text-accent">トップへ戻る</Link>
       </div>
     </div>
+    )
   );
 }

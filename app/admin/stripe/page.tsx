@@ -72,7 +72,7 @@ export default function AdminStripeFeePage() {
         </p>
         {stripeMode !== "live" ? (
           <p className="mt-2 text-xs text-amber-700">
-            本番反映するには Vercel の環境変数 `STRIPE_SECRET_KEY` を `sk_live_...` に変更し、再デプロイしてください。
+            本番反映するには Vercel の環境変数 `STRIPE_SECRET_KEY` をライブ用シークレットキーに変更し、再デプロイしてください。
           </p>
         ) : null}
 
