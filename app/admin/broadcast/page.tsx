@@ -57,8 +57,8 @@ export default function AdminBroadcastPage() {
         if (!isActive) return;
         const items = Array.isArray(payload.items) ? payload.items : [];
         const normalized: TutorItem[] = items
-          .filter((item) => typeof item?.id === "string")
-          .map((item) => ({
+          .filter((item: any) => typeof item?.id === "string")
+          .map((item: any) => ({
             id: String(item.id),
             full_name: typeof item.full_name === "string" && item.full_name.trim() ? item.full_name : "名前未設定",
             school: typeof item.school === "string" ? item.school : null

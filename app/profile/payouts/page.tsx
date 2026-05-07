@@ -42,11 +42,12 @@ export default function PayoutSettingsPage() {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error("Supabase client is not initialized");
       const { data: sessionData } = await supabase.auth.getSession();
-      const uid = sessionData.session?.user.id;
-      if (!uid) throw new Error("ログインが必要です");
+      const session = sessionData.session;
+      const uid = session?.user.id;
+      if (!uid || !session) throw new Error("ログインが必要です");
       const sessionRole =
-        normalizeRole(sessionData.session.user.user_metadata?.role) ||
-        normalizeRole(sessionData.session.user.app_metadata?.role);
+        normalizeRole(session.user.user_metadata?.role) ||
+        normalizeRole(session.user.app_metadata?.role);
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
       const profileRole = normalizeRole(profile?.role);
       const resolvedRole = profileRole || sessionRole;
@@ -54,7 +55,7 @@ export default function PayoutSettingsPage() {
         console.warn("Payout setup role resolution failed: role is missing from profile and session", {
           userId: uid,
           profileRole: profile?.role ?? null,
-          sessionRole: sessionData.session.user.user_metadata?.role ?? sessionData.session.user.app_metadata?.role ?? null
+          sessionRole: session.user.user_metadata?.role ?? session.user.app_metadata?.role ?? null
         });
         throw new Error("データの読み込みに失敗しました");
       }
@@ -64,7 +65,7 @@ export default function PayoutSettingsPage() {
         console.warn("Payout setup access blocked: non-tutor role", {
           userId: uid,
           profileRole: profile?.role ?? null,
-          sessionRole: sessionData.session.user.user_metadata?.role ?? sessionData.session.user.app_metadata?.role ?? null,
+          sessionRole: session.user.user_metadata?.role ?? session.user.app_metadata?.role ?? null,
           resolvedRole
         });
         setError("このページは大学生メンターアカウントのみ利用できます。");
