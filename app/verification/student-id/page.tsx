@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
-const MAX_IMAGE_BYTES = 3_145_728;
-const FILE_SIZE_ERROR_MESSAGE = "ファイルサイズが大きすぎます。3MB以下の画像を選択してください。";
+const MAX_IMAGE_BYTES = 1_048_576;
+const MAX_IMAGE_WIDTH_OR_HEIGHT = 1200;
+const MAX_QUALITY_RETRIES = 6;
+const MAX_FALLBACK_UPLOAD_BYTES = 10_485_760;
+const FILE_SIZE_ERROR_MESSAGE = "画像の圧縮後もサイズが大きすぎます。別の画像を選択してください。";
 
 type Verification = {
   id: string;
@@ -19,6 +22,84 @@ type Verification = {
 
 const normalizeRole = (value: unknown) => String(value ?? "").trim().toLowerCase();
 
+const isCompressibleImageType = (mimeType: string) =>
+  ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(mimeType);
+
+const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality: number) =>
+  new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("画像の圧縮に失敗しました"));
+          return;
+        }
+        resolve(blob);
+      },
+      type,
+      quality
+    );
+  });
+
+const loadImageFromFile = (file: File) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("画像の読み込みに失敗しました"));
+    };
+    image.src = objectUrl;
+  });
+
+async function compressImageBeforeUpload(file: File): Promise<File> {
+  if (!isCompressibleImageType(file.type)) return file;
+
+  const image = await loadImageFromFile(file);
+  const needsResize =
+    image.width > MAX_IMAGE_WIDTH_OR_HEIGHT || image.height > MAX_IMAGE_WIDTH_OR_HEIGHT;
+  if (!needsResize && file.size <= MAX_IMAGE_BYTES) {
+    return file;
+  }
+
+  const scale = Math.min(1, MAX_IMAGE_WIDTH_OR_HEIGHT / Math.max(image.width, image.height));
+  const targetWidth = Math.max(1, Math.round(image.width * scale));
+  const targetHeight = Math.max(1, Math.round(image.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("画像圧縮コンテキストの初期化に失敗しました");
+  }
+  context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+  const targetType = "image/jpeg";
+  let quality = 0.9;
+  let bestBlob = await canvasToBlob(canvas, targetType, quality);
+
+  for (let attempt = 0; attempt < MAX_QUALITY_RETRIES && bestBlob.size > MAX_IMAGE_BYTES; attempt += 1) {
+    quality = Math.max(0.45, quality - 0.1);
+    const nextBlob = await canvasToBlob(canvas, targetType, quality);
+    if (nextBlob.size <= bestBlob.size) {
+      bestBlob = nextBlob;
+    }
+    if (bestBlob.size <= MAX_IMAGE_BYTES) break;
+  }
+
+  const compressedFileName = file.name.replace(/\.[^.]+$/, "") || "student-id";
+  return new File([bestBlob], `${compressedFileName}.jpg`, {
+    type: targetType,
+    lastModified: Date.now()
+  });
+}
+
 export default function StudentIdVerificationPage() {
   const [verification, setVerification] = useState<Verification | null>(null);
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -31,7 +112,7 @@ export default function StudentIdVerificationPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  const isOverSizeLimit = (file: File | null) => Boolean(file && file.size > MAX_IMAGE_BYTES);
+  const isOverSizeLimit = (file: File | null) => Boolean(file && file.size > MAX_FALLBACK_UPLOAD_BYTES);
 
   const handleImageSelect = (
     file: File | null,
@@ -39,13 +120,6 @@ export default function StudentIdVerificationPage() {
   ) => {
     if (!file) {
       setter(null);
-      return;
-    }
-    if (isOverSizeLimit(file)) {
-      setter(null);
-      setError(FILE_SIZE_ERROR_MESSAGE);
-      setNotice(null);
-      setLoading(false);
       return;
     }
     setter(file);
@@ -133,7 +207,7 @@ export default function StudentIdVerificationPage() {
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (loading) {
-      setLoading(false);
+      return;
     }
     setError(null);
     setNotice(null);
@@ -142,8 +216,7 @@ export default function StudentIdVerificationPage() {
       return;
     }
     if (isOverSizeLimit(frontFile) || isOverSizeLimit(backFile)) {
-      setError(FILE_SIZE_ERROR_MESSAGE);
-      setLoading(false);
+      setError("画像サイズが大きすぎます。10MB未満の画像を選択してください。");
       return;
     }
     if (!/^\d{4}$/.test(admissionYear) || !/^\d{4}$/.test(graduationYear)) {
@@ -151,22 +224,32 @@ export default function StudentIdVerificationPage() {
       return;
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setError("Supabaseが初期化されていません");
-      return;
-    }
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setError("ログインが必要です");
-      return;
-    }
-
     setLoading(true);
     try {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setError("Supabaseが初期化されていません");
+        return;
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        setError("ログインが必要です");
+        return;
+      }
+
+      const [compressedFrontFile, compressedBackFile] = await Promise.all([
+        compressImageBeforeUpload(frontFile),
+        compressImageBeforeUpload(backFile)
+      ]);
+
+      if (compressedFrontFile.size > MAX_IMAGE_BYTES || compressedBackFile.size > MAX_IMAGE_BYTES) {
+        setError(FILE_SIZE_ERROR_MESSAGE);
+        return;
+      }
+
       const formData = new FormData();
-      formData.append("studentIdImageFront", frontFile);
-      formData.append("studentIdImageBack", backFile);
+      formData.append("studentIdImageFront", compressedFrontFile);
+      formData.append("studentIdImageBack", compressedBackFile);
       formData.append("admissionYear", admissionYear);
       formData.append("graduationYear", graduationYear);
 
@@ -258,6 +341,7 @@ export default function StudentIdVerificationPage() {
               className="input"
               type="file"
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+              disabled={loading}
               onChange={(e) => handleImageSelect(e.target.files?.[0] ?? null, setFrontFile)}
             />
           </label>
@@ -267,23 +351,24 @@ export default function StudentIdVerificationPage() {
               className="input"
               type="file"
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+              disabled={loading}
               onChange={(e) => handleImageSelect(e.target.files?.[0] ?? null, setBackFile)}
             />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2">
               <span className="label">入学年度</span>
-              <input className="input" placeholder="例: 2024" value={admissionYear} onChange={(e) => setAdmissionYear(e.target.value)} />
+              <input className="input" placeholder="例: 2024" value={admissionYear} disabled={loading} onChange={(e) => setAdmissionYear(e.target.value)} />
             </label>
             <label className="grid gap-2">
               <span className="label">卒業予定年度</span>
-              <input className="input" placeholder="例: 2028" value={graduationYear} onChange={(e) => setGraduationYear(e.target.value)} />
+              <input className="input" placeholder="例: 2028" value={graduationYear} disabled={loading} onChange={(e) => setGraduationYear(e.target.value)} />
             </label>
           </div>
           {error && <p className="text-sm text-accent">{error}</p>}
           {notice && <p className="text-sm text-sea">{notice}</p>}
           <button className="btn btn-primary" disabled={loading}>
-            {loading ? "提出中..." : "学生証を提出する"}
+            {loading ? "画像を処理して提出中..." : "学生証を提出する"}
           </button>
         </form>
 
