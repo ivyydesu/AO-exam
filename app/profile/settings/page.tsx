@@ -363,16 +363,21 @@ export default function ProfileSettingsPage() {
       if (!supabase) throw new Error("Supabase client is not initialized");
       const { data } = await supabase.auth.getSession();
       if (!data.session) throw new Error("ログインが必要です");
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
+      const res = await fetch("/api/profile/create", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id: data.session.user.id,
           full_name: form.full_name.trim(),
+          role: userRole,
           school: form.school.trim()
         })
-        .eq("id", data.session.user.id);
-
-      if (updateError) throw new Error(updateError.message);
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error ?? "プロフィール保存に失敗しました");
       setNotice("プロフィールを保存しました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "プロフィール保存に失敗しました");
